@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order & Payment Confirmation</title>
+<!--[if mso]>
+<style type="text/css">
+body, table, td {font-family: Arial, sans-serif !important;}
+</style>
+<![endif]-->
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased; width: 100% !important;">
+  <div style="width: 100%; padding: 20px 0;">
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
+      <!-- Header -->
+      <tr>
+        <td style="background-color: #f5b041; padding: 30px; text-align: center;">
+          <h1 style="margin: 0; color: #2c3e50; font-size: 28px; line-height: 32px;">Order & Payment Confirmation!</h1>
+          <p style="color: #2c3e50; margin: 10px 0 0 0; font-size: 16px;">
+            Payment Status:
+            <span style="text-transform: uppercase; font-weight: bold">{{order.payment_status}}</span>
+          </p>
+        </td>
+      </tr>
+
+      <!-- Main Content -->
+      <tr>
+        <td style="padding: 30px;">
+          <h2 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 24px;">Hey, {{order.full_name}}!</h2>
+          <p style="color: #555; line-height: 1.6; margin: 0 0 25px 0;">
+            Thanks for shopping with <strong>Upfront</strong>! Your order ID is
+            <span style="color: #f5b041; font-weight: bold">#{{order.oid}}</span>.
+          </p>
+
+          <!-- Vendor Info -->
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; margin-bottom: 25px; background-color: #f8f9fa; border-radius: 6px;">
+            <tr>
+              <td style="padding: 20px;">
+                <h3 style="color: #2c3e50; margin: 0 0 10px 0; font-size: 20px;">Seller Information</h3>
+                {% for vendor in order.vendor.all %}
+                <p style="margin: 0; color: #555;">
+                  <strong>{{vendor.name}}</strong><br>
+                  Contact: {{vendor.mobile}}
+                </p>
+                {% endfor %}
+              </td>
+            </tr>
+          </table>
+
+          <!-- Order Summary -->
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; margin-bottom: 25px; background-color: #f8f9fa; border-radius: 6px;">
+            <tr>
+              <td style="padding: 20px;">
+                <h3 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 20px;">Order Summary</h3>
+                
+                <!-- Order Items Table -->
+                <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                  <thead>
+                    <tr style="border-bottom: 2px solid #dee2e6;">
+                      <th style="padding: 12px 8px; text-align: left; color: #2c3e50; font-size: 14px;">Product</th>
+                      <th style="padding: 12px 8px; text-align: center; color: #2c3e50; font-size: 14px;">Variation</th>
+                      <th style="padding: 12px 8px; text-align: center; color: #2c3e50; font-size: 14px;">Qty</th>
+                      <th style="padding: 12px 8px; text-align: right; color: #2c3e50; font-size: 14px;">Sub Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for item in order_items %}
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                      <td style="padding: 12px 8px; color: #555; font-size: 14px;">{{item.product.title}}</td>
+                      <td style="padding: 12px 8px; text-align: center; color: #555; font-size: 14px;">
+                        {% if item.size or item.color %} {{item.size}}
+                        {% if item.size and item.color %}, {% endif %}{{item.color}} {% else %} - {% endif %}
+                      </td>
+                      <td style="padding: 12px 8px; text-align: center; color: #555; font-size: 14px;">{{item.qty}}</td>
+                      <td style="padding: 12px 8px; text-align: right; color: #555; font-size: 14px;">${{item.sub_total}}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+
+                <!-- Order Totals -->
+                <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; border-top: 2px solid #dee2e6;">
+                  <tr>
+                    <td style="padding: 15px 0;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%;">
+                        <tr>
+                          <td style="padding: 8px 0; color: #555;">Sub Total:</td>
+                          <td style="padding: 8px 0; text-align: right; color: #2c3e50; font-weight: bold;">${{order.sub_total}}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 8px 0; color: #555;">Shipping Fee:</td>
+                          <td style="padding: 8px 0; text-align: right; color: #2c3e50; font-weight: bold;">${{order.shipping_amount}}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 8px 0; color: #555;">Tax Fee:</td>
+                          <td style="padding: 8px 0; text-align: right; color: #2c3e50; font-weight: bold;">${{order.tax_fee}}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 8px 0; color: #555;">Service Fee:</td>
+                          <td style="padding: 8px 0; text-align: right; color: #2c3e50; font-weight: bold;">${{order.service_fee}}</td>
+                        </tr>
+                        {% if order.saved > 0 %}
+                        <tr>
+                          <td style="padding: 8px 0; color: #555;">You Saved:</td>
+                          <td style="padding: 8px 0; text-align: right; color: #28a745; font-weight: bold;">${{order.saved}}</td>
+                        </tr>
+                        {% endif %}
+                        <tr>
+                          <td colspan="2" style="padding-top: 15px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; border-top: 2px solid #dee2e6;">
+                              <tr>
+                                <td style="padding: 15px 0; color: #2c3e50; font-weight: bold;">Total:</td>
+                                <td style="padding: 15px 0; text-align: right; font-weight: bold; font-size: 18px;">${{order.total}}</td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Shipping Info -->
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; margin-bottom: 25px; background-color: #f8f9fa; border-radius: 6px;">
+            <tr>
+              <td style="padding: 20px;">
+                <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px;">Shipping Information</h3>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>Full Name:</strong> {{order.full_name}}</p>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>Email:</strong> {{order.email}}</p>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>Mobile:</strong> {{order.mobile}}</p>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>Address:</strong> {{order.address}}</p>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>City:</strong> {{order.city}}</p>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>State:</strong> {{order.state}}</p>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;"><strong>Country:</strong> {{order.country}}</p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Payment Info -->
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; margin-bottom: 25px; background-color: #f8f9fa; border-radius: 6px;">
+            <tr>
+              <td style="padding: 20px;">
+                <h3 style="color: #2c3e50; margin: 0 0 15px 0; font-size: 20px;">Payment Information</h3>
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;">
+                  <strong>Payment Status:</strong>
+                  <span style="color: #28a745; text-transform: uppercase; font-weight: bold">{{order.payment_status}}</span>
+                </p>
+                {% if order.stripe_session_id %}
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;">
+                  <strong>Transaction ID:</strong> {{order.stripe_session_id}}
+                </p>
+                {% endif %}
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;">
+                  <strong>Order Date:</strong> {{order.date|date:"F d, Y"}}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Footer Message -->
+          <p style="color: #555; line-height: 1.6; margin: 0 0 25px 0;">
+            Feel free to contact us if you have any questions about your order!
+          </p>
+
+          <p style="color: #555; line-height: 1.6; margin: 0;">
+            Best regards,<br>
+            <strong style="color: #2c3e50">Upfront Team</strong>
+          </p>
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background-color: #2c3e50; padding: 20px; text-align: center;">
+          <p style="color: #fff; margin: 0; font-size: 14px;">
+            © {% now "Y" %} Upfront. All rights reserved.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>
