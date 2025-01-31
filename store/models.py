@@ -185,6 +185,7 @@ class CartOrder(models.Model):
   country = models.CharField(max_length=100, null=True, blank=True)
   
   stripe_session_id = models.CharField(max_length=1000, null=True, blank=True)
+  paypal_session_id = models.CharField(max_length=1000, null=True, blank=True)
 
   date = models.DateTimeField(auto_now_add=True)
   oid = ShortUUIDField(unique=True, length=10, alphabet='abcdefghi12345')

@@ -1,6 +1,5 @@
 from django.shortcuts import redirect
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, send_mail
 from django.template.loader import render_to_string
 
 from mailersend import emails
@@ -12,13 +11,14 @@ from rest_framework.response import Response
 from userauths.models import User
 
 from store.models import Category, Product, Gallery, Specification, Size, Color, Cart, CartOrder, CartOrderItem, ProductFaq, Review, Wishlist, Notification, Coupon, Tax
-from store.serializers import ProductSerializer, CategorySerializer, CartSerializer, CartOrderSerializer, CartOrderItemSerializer, CouponSerializer, NotificationSerializer
+from store.serializers import ProductSerializer, CategorySerializer, CartSerializer, CartOrderSerializer, CartOrderItemSerializer, CouponSerializer, NotificationSerializer, ReviewSerializer
 
 from decimal import Decimal
 
 import stripe
 import stripe.error
 import traceback
+import requests
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -431,171 +431,254 @@ def calculate_vendor_totals(order_items, vendor):
       'vendor_items': vendor_items
   }    
     
+def get_access_token(client_id, secret_id):
+  try:
+      print("Getting PayPal access token...")
+      token_url = 'https://api.sandbox.paypal.com/v1/oauth2/token'
+      data = {'grant_type': 'client_credentials'}
+      auth = (client_id, secret_id)  # Perbaiki format auth
+      print("Making token request to:", token_url)
+      
+      response = requests.post(token_url, data=data, auth=auth)
+      print("Token response status:", response.status_code)
+      print("Token response:", response.text)
+      
+      if response.status_code == 200:
+          token = response.json()['access_token']
+          print('Got access token:', token[:10] + '...')
+          return token
+      else:
+          raise Exception(f'Failed to get access token: {response.status_code} - {response.text}')
+  
+  except Exception as e:
+      print("Error getting access token:", str(e))
+      print(traceback.format_exc())
+      raise 
+
 class PaymentSuccessView(generics.CreateAPIView):
   serializer_class = CartOrderSerializer
   permission_classes = [AllowAny,]
   queryset = CartOrder.objects.all()
-  
+
+  def _get_paypal_order_status(self, paypal_order_id):
+    """Verify PayPal order status"""
+    try:
+      print('Verifying PayPal payment...')
+      paypal_api_url = f'https://api-m.sandbox.paypal.com/v2/checkout/orders/{paypal_order_id}'
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {get_access_token(settings.PAYPAL_CLIENT_ID, settings.PAYPAL_SECRET_ID)}'
+      }
+      
+      response = requests.get(paypal_api_url, headers=headers)
+      print('PayPal API Response:', response.status_code, response.text)
+      
+      if response.status_code == 200:
+        return response.json().get('status')
+      return None
+    
+    except Exception as e:
+        print(f"PayPal verification error: {str(e)}")
+        return None
+
+  def _send_vendor_notification(self, vendor, order, order_items):
+      """Send email notification to vendor"""
+      try:
+        context = {
+          'order': order,
+          'order_items': order_items,
+          'vendor': vendor,
+          **calculate_vendor_totals(order_items, vendor)
+        }
+        
+        mail_body = {}
+        mail_from = {
+          "name": "Upfront",
+          "email": settings.FROM_EMAIL,
+        }
+        recipients = [{
+          "name": vendor.name,
+          "email": vendor.user.email,
+        }]
+        
+        mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
+        mailer.set_mail_from(mail_from, mail_body)
+        mailer.set_mail_to(recipients, mail_body)
+        mailer.set_subject("New sale!", mail_body)
+        mailer.set_html_content(
+          render_to_string('email/vendor_sale.html', context),
+          mail_body
+        )
+        
+        mailer.send(mail_body)
+        
+      except Exception as e:
+        print(f"Vendor notification error: {traceback.format_exc()}")
+
+  def _send_customer_notification(self, order, order_items):
+      """Send email notification to customer"""
+      try:
+          context = {
+              'order': order,
+              'order_items': order_items,
+          }
+          
+          mail_body = {}
+          mail_from = {
+              "name": "Upfront",
+              "email": settings.FROM_EMAIL,
+          }
+          recipients = [{
+              "name": order.full_name,
+              "email": order.email,
+          }]
+          
+          mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
+          mailer.set_mail_from(mail_from, mail_body)
+          mailer.set_mail_to(recipients, mail_body)
+          mailer.set_subject("Order placed successfully", mail_body)
+          mailer.set_html_content(
+              render_to_string('email/customer_order_confirmation.html', context),
+              mail_body
+          )
+          
+          mailer.send(mail_body)
+      except Exception as e:
+          print(f"Customer notification error: {traceback.format_exc()}")
+
+  def _process_successful_payment(self, order, order_items, transaction_id=None):
+    """Process successful payment and send notifications"""
+    if order.payment_status != 'pending':
+        return Response({
+            'message': 'Payment has already been processed',
+            'status': 'info'
+        })
+
+    order.payment_status = 'paid'
+    if transaction_id:  # Save the transaction ID
+        order.paypal_order_id = transaction_id
+    order.save()
+
+    # Send notifications
+    if order.buyer:
+        send_notification(user=order.buyer, order=order)        
+        self._send_customer_notification(order, order_items)
+
+    # Send vendor notifications
+    vendors_notified = set()  # Track which vendors have been notified
+    for item in order_items:
+        if item.vendor.id not in vendors_notified:
+            send_notification(vendor=item.vendor, order=order, order_item=item)
+            self._send_vendor_notification(item.vendor, order, order_items)
+            vendors_notified.add(item.vendor.id)
+
+    return Response({
+        'message': 'Payment completed successfully',
+        'status': 'success'
+    })
+
   def create(self, request, *args, **kwargs):
     try:
-      payload = request.data
-      order_oid = payload.get('order_oid')
-      session_id = payload.get('session_id')
-      
-      if not order_oid:
-        return Response(
-          {'message': 'Order ID is required'},
-          status=status.HTTP_400_BAD_REQUEST
-        )
-      
-      try:
-        order = CartOrder.objects.get(oid=order_oid)
-        order_items = CartOrderItem.objects.filter(order=order)
-      except CartOrder.DoesNotExist:
-        return Response(
-          {'message': 'Order not found'},
-          status=status.HTTP_404_NOT_FOUND
-        )
-      
-      if session_id and session_id != 'null':
+        payload = request.data
+        order_oid = payload.get('order_oid')
+        session_id = payload.get('session_id')
+        paypal_order_id = payload.get('paypal_order_id')
+        
+        if not order_oid:
+            return Response(
+                {'message': 'Order ID is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
-          session = stripe.checkout.Session.retrieve(session_id)
-          
-          if session.payment_status == 'paid':
-            if order.payment_status == 'pending':
-              order.payment_status = 'paid'
-              order.save()
-              
-              mailersend_api_key = settings.MAILERSEND_API_KEY
-              mailer = emails.NewEmail(mailersend_api_key)
-              
-              # Send notifications to customer
-              if order.buyer != None:
-                send_notification(user=order.buyer, order=order)
+            order = CartOrder.objects.get(oid=order_oid)
+            order_items = CartOrderItem.objects.filter(order=order)
+        except CartOrder.DoesNotExist:
+            return Response(
+                {'message': 'Order not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # PayPal Payment
+        if paypal_order_id and paypal_order_id != 'null':
+            paypal_status = self._get_paypal_order_status(paypal_order_id)
+            
+            if paypal_status == 'COMPLETED':
+                return self._process_successful_payment(order, order_items, transaction_id=paypal_order_id)
+            elif paypal_status:
+                return Response({
+                    'message': 'Payment pending. Please complete your payment',
+                    'status': 'warning'
+                })
+        
+        # Stripe Payment
+        if session_id and session_id != 'null':
+            try:
+                session = stripe.checkout.Session.retrieve(session_id)
                 
-              # Send notifications to vendor
-              for o in order_items:
-                send_notification(vendor=o.vendor, order=order, order_item=o)
-                
-                # Send email to vendor
-                try:
-                  context = {
-                    'order': order,
-                    'order_items': order_items,
-                    'vendor': o.vendor,
-                  }
-                  
-                  # Add the vendor totals to context
-                  vendor_totals = calculate_vendor_totals(order_items,o.vendor)
-                  context.update(vendor_totals)
-                  
-                  subject = 'New sale!'
-                  # text_body = render_to_string('email/customer_order_confirmation.txt', context)
-                  html_body = render_to_string('email/vendor_sale.html', context)
-                  
-                  mail_body = {}
-                  
-                  mail_from = {
-                    "name": "Upfront",
-                    "email": settings.FROM_EMAIL,
-                  }
-
-                  recipients = [
-                    {
-                      "name": o.vendor.name,
-                      "email": o.vendor.user.email,
-                    }
-                  ]
-                  
-                  mailer.set_mail_from(mail_from, mail_body)
-                  mailer.set_mail_to(recipients, mail_body)
-                  mailer.set_subject(subject, mail_body)
-                  mailer.set_html_content(html_body, mail_body)
-                  
-                  # Send email
-                  mailer.send(mail_body)
-                  
-                except Exception as e:
-                  print(traceback.format_exc())
-              
-              # Send email to customer
-              try:
-                context = {
-                  'order': order,
-                  'order_items': order_items,
-                }
-                
-                subject = 'Order placed successfully'
-                # text_body = render_to_string('email/customer_order_confirmation.txt', context)
-                html_body = render_to_string('email/customer_order_confirmation.html', context)
-                
-                mail_body = {}
-                
-                mail_from = {
-                  "name": "Upfront",
-                  "email": settings.FROM_EMAIL,
-                }
-
-                recipients = [
-                  {
-                    "name": order.full_name,
-                    "email": order.email,
-                  }
-                ]
-                
-                mailer.set_mail_from(mail_from, mail_body)
-                mailer.set_mail_to(recipients, mail_body)
-                mailer.set_subject(subject, mail_body)
-                mailer.set_html_content(html_body, mail_body)
-                
-                # Send email
-                mailer.send(mail_body)\
-                
-              except Exception as e:
-                print(traceback.format_exc())
-              
-              return Response({
-                'message': 'Payment completed successfully',
-                'status': 'success'
-              })
-            else:
-              return Response({
-              'message': 'Payment has already been processed',
-              'status': 'info'
-            })
-          
-          elif session.payment_status == 'unpaid':
-            return Response({
-              'message': 'Payment pending. Please complete your payment',
-              'status': 'warning'
-            })
-          
-          elif session.payment_status == 'cancelled':
-            return Response({
-              'message': 'Payment cancelled. Please try again or contact support',
-              'status': 'error'
-            })
-          
-          else:
-            return Response({
-              'message': 'Unable to process payment. Please try again or contact support',
-              'status': 'error'
-            })
-        except stripe.error.StripeError as e:
-          return Response({
-            'message': 'Payment verification failed. Please try again or contact support',
+                if session.payment_status == 'paid':
+                    return self._process_successful_payment(order, order_items)
+                elif session.payment_status == 'unpaid':
+                    return Response({
+                        'message': 'Payment pending. Please complete your payment',
+                        'status': 'warning'
+                    })
+                elif session.payment_status == 'cancelled':
+                    return Response({
+                        'message': 'Payment cancelled. Please try again or contact support',
+                        'status': 'error'
+                    })
+            except stripe.error.StripeError as e:
+                return Response({
+                    'message': 'Payment verification failed. Please try again or contact support',
+                    'error': str(e),
+                    'status': 'error'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'message': 'Invalid payment information provided',
+            'status': 'error'
+        }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        print(f"Unexpected error: {traceback.format_exc()}")
+        return Response({
+            'message': 'An unexpected error occurred',
             'error': str(e),
             'status': 'error'
-          }, status=status.HTTP_400_BAD_REQUEST)
-      
-      return Response({
-        'message': 'Invalid session ID provided',
-        'status': 'error'
-      }, status=status.HTTP_400_BAD_REQUEST)
-      
-    except Exception as e:
-      return Response({
-        'message': 'An unexpected error occurred',
-        'error': str(e),
-        'status': 'error'
-      }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class ReviewListAPIView(generics.ListCreateAPIView):
+  serializer_class = ReviewSerializer
+  permission_classes = [AllowAny,]
+  
+  def get_queryset(self):
+    product_id = self.kwargs['product_id']
+    
+    product = Product.objects.get(id=product_id)
+    reviews = Review.objects.filter(product=product)
+    
+    return reviews
+  
+  def create(self, request, *args, **kwargs):
+    payload = request.data
+    
+    user_id = payload['user_id']
+    product_id = payload['product_id']
+    rating = payload['rating']
+    review = payload['review']
+    
+    user = User.objects.get(id=user_id)
+    product = Product.objects.get(id=product_id)
+    
+    Review.objects.create(
+      user=user,
+      product=product,
+      rating=rating,
+      review=review,
+    )
+    
+    return Response({
+      'message': 'Review created successfully',
+      'status': 'success'
+    }, status=status.HTTP_200_OK)

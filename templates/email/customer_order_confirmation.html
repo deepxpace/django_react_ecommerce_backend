@@ -151,7 +151,12 @@ body, table, td {font-family: Arial, sans-serif !important;}
                 </p>
                 {% if order.stripe_session_id %}
                 <p style="margin: 8px 0; color: #555; line-height: 1.6;">
-                  <strong>Transaction ID:</strong> {{order.stripe_session_id}}
+                  <strong>Transaction ID Pay with Stripe:</strong> {{order.stripe_session_id}}
+                </p>
+                {% endif %}
+                {% if order.paypal_order_id %}
+                <p style="margin: 8px 0; color: #555; line-height: 1.6;">
+                  <strong>Transaction ID Pay with PayPal:</strong> {{order.paypal_order_id}}
                 </p>
                 {% endif %}
                 <p style="margin: 8px 0; color: #555; line-height: 1.6;">
