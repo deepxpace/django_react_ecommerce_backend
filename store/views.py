@@ -369,7 +369,7 @@ class CouponAPIView(generics.CreateAPIView):
             }, status=status.HTTP_200_OK)
       else:
         return Response({
-          'message': 'Order Item Does not Exists', 
+          'message': 'This coupon is not valid for the items in your cart', 
           'status': 'error'
         }, status=status.HTTP_200_OK)
     else:
@@ -682,3 +682,44 @@ class ReviewListAPIView(generics.ListCreateAPIView):
       'message': 'Review created successfully',
       'status': 'success'
     }, status=status.HTTP_200_OK)
+    
+class SearchProductAPIView(generics.ListCreateAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        query = self.request.GET.get('query', '')
+        category = self.request.GET.get('category')
+        min_price = self.request.GET.get('min_price')
+        max_price = self.request.GET.get('max_price')
+        sort = self.request.GET.get('sort')
+        in_stock = self.request.GET.get('in_stock')
+        
+        queryset = Product.objects.filter(status='published')
+        
+        if query:
+            queryset = queryset.filter(title__icontains=query)
+        
+        if category:
+            queryset = queryset.filter(category_id=category)
+            
+        if min_price:
+            queryset = queryset.filter(price__gte=min_price)
+            
+        if max_price:
+            queryset = queryset.filter(price__lte=max_price)
+            
+        if in_stock == 'true':
+            queryset = queryset.filter(in_stock=True)
+            
+        if sort:
+            if sort == 'price_asc':
+                queryset = queryset.order_by('price')
+            elif sort == 'price_desc':
+                queryset = queryset.order_by('-price')
+            elif sort == 'rating':
+                queryset = queryset.order_by('-rating')
+            elif sort == 'newest': 
+                queryset = queryset.order_by('-date')
+                
+        return queryset
