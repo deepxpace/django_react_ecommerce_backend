@@ -4,13 +4,17 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from userauths import views as userauths_views
 from store import views as store_views
+from customer import views as customer_views
 
 urlpatterns = [
+  
+  # USER ENDPOINTS
   path('user/token/', userauths_views.MyTokenObtainPairView.as_view()),
   path('user/token/refresh/', TokenRefreshView.as_view()),
   path('user/register/', userauths_views.RegisterView.as_view()),
   path('user/password-reset/<email>/', userauths_views.PasswordResetEmailVerify.as_view()),
   path('user/password-change/', userauths_views.PasswordChangeView.as_view()),
+  path('user/profile/<user_id>/', userauths_views.ProfileView.as_view()),
   
   # STORE ENDPOINTS
   path('category/', store_views.CategoryListAPIView.as_view()),
@@ -29,7 +33,11 @@ urlpatterns = [
   path('reviews/<product_id>/', store_views.ReviewListAPIView.as_view()),
   path('search/', store_views.SearchProductAPIView.as_view()),
   
-  # Payment Endpoints
+  # PAYMENT ENDPOINTS
   path('stripe-checkout/<order_oid>/', store_views.StripeCheckoutAPIView.as_view()),
   path('payment-success/<order_oid>/', store_views.PaymentSuccessView.as_view()),
+  
+  # CUSTOMER ENDPOINTS
+  path('customer/orders/<user_id>/', customer_views.OrdersAPIView.as_view()),
+  path('customer/orders/<user_id>/<order_oid>/', customer_views.OrderDetailAPIView.as_view()),
 ]
