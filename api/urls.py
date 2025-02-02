@@ -39,5 +39,8 @@ urlpatterns = [
   
   # CUSTOMER ENDPOINTS
   path('customer/orders/<user_id>/', customer_views.OrdersAPIView.as_view()),
-  path('customer/orders/<user_id>/<order_oid>/', customer_views.OrderDetailAPIView.as_view()),
+  path('customer/order/<user_id>/<order_oid>/', customer_views.OrderDetailAPIView.as_view()),
+  path('customer/wishlist/<user_id>/', customer_views.WishlistAPIVIew.as_view()),
+  path('customer/notification/<user_id>/', customer_views.CustomerNotification.as_view()),
+  path('customer/notification/<user_id>/<noti_id>/', customer_views.MarkCustomerNotificationAsSeen.as_view()),
 ]

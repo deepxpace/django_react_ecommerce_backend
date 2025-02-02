@@ -70,7 +70,7 @@ class PasswordChangeView(generics.CreateAPIView):
     else:
       return Response({'message': 'An error occured'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-class ProfileView(generics.RetrieveAPIView):
+class ProfileView(generics.RetrieveUpdateAPIView):
   serializer_class = ProfileSerializer
   permission_classes = [AllowAny,]
   
