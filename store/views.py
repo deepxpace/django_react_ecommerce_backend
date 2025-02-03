@@ -549,28 +549,28 @@ class PaymentSuccessView(generics.CreateAPIView):
   def _process_successful_payment(self, order, order_items, transaction_id=None):
     """Process successful payment and send notifications"""
     if order.payment_status != 'pending':
-        return Response({
-            'message': 'Payment has already been processed',
-            'status': 'info'
-        })
+      return Response({
+        'message': 'Payment has already been processed',
+        'status': 'info'
+      })
 
     order.payment_status = 'paid'
     if transaction_id:  # Save the transaction ID
-        order.paypal_order_id = transaction_id
+      order.paypal_order_id = transaction_id
     order.save()
 
     # Send notifications
     if order.buyer:
-        send_notification(user=order.buyer, order=order)        
-        self._send_customer_notification(order, order_items)
+      send_notification(user=order.buyer, order=order)        
+      self._send_customer_notification(order, order_items)
 
     # Send vendor notifications
     vendors_notified = set()  # Track which vendors have been notified
     for item in order_items:
-        if item.vendor.id not in vendors_notified:
-            send_notification(vendor=item.vendor, order=order, order_item=item)
-            self._send_vendor_notification(item.vendor, order, order_items)
-            vendors_notified.add(item.vendor.id)
+      if item.vendor.id not in vendors_notified:
+        send_notification(vendor=item.vendor, order=order, order_item=item)
+        self._send_vendor_notification(item.vendor, order, order_items)
+        vendors_notified.add(item.vendor.id)
 
     return Response({
         'message': 'Payment completed successfully',
