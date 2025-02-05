@@ -322,7 +322,7 @@ class ReviewDetailAPIView(generics.RetrieveUpdateAPIView):
         return review
 
 
-class CouponListCreateAPIView(generics.ListAPIView):
+class CouponListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = CouponSerializer
     permission_classes = [
         AllowAny,
@@ -355,7 +355,7 @@ class CouponListCreateAPIView(generics.ListAPIView):
         )
 
 
-class CouponDetailAPIView(generics.RetrieveUpdateAPIView):
+class CouponDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CouponSerializer
     permission_classes = [
         AllowAny,
@@ -391,7 +391,7 @@ class CouponStatsAPIVIew(generics.ListAPIView):
         return Response(serializer.data)
 
 
-class NotificationUnseenAPIVIew(generics.ListAPIView):
+class NotificationUnseenAPIView(generics.ListAPIView):
     serializer_class = NotificationSerializer
     permission_classes = [
         AllowAny,
@@ -459,7 +459,7 @@ class NotificationVendorMarkAsSeen(generics.RetrieveAPIView):
         vendor = Vendor.objects.get(id=vendor_id)
         noti = Notification.objects.get(vendor=vendor, id=noti_id)
 
-        noti.seen() == True
+        noti.seen = True
         noti.save()
 
         return noti
