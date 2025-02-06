@@ -9,7 +9,7 @@ from userauths.models import User
 class Vendor(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     image = models.FileField(
-        upload_to="vendor", blank=True, null=True, default="vendor.jpg"
+        upload_to="vendor", blank=True, null=True, default="default/vendor.jpg"
     )
     name = models.CharField(
         max_length=100, help_text="Store Name", null=True, blank=True
