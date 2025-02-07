@@ -122,4 +122,8 @@ urlpatterns = [
         "vendor-products/<vendor_slug>/",
         vendor_views.ShopProductAPIView.as_view(),
     ),
+    path(
+        "vendor-create-product/",
+        vendor_views.ProductCreateView.as_view(),
+    ),
 ]

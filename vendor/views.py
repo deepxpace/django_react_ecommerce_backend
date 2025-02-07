@@ -1,7 +1,7 @@
 from django.shortcuts import redirect
 from django.conf import settings
 from django.template.loader import render_to_string
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import ExtractMonth
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -51,6 +51,10 @@ from store.serializers import (
     SummarySerializer,
     EarningSerializer,
     ProfileSerializer,
+    SpecificationSerializer,
+    ColorSerializer,
+    SizeSerializer,
+    GallerySerializer,
 )
 
 from datetime import datetime, timedelta
@@ -503,3 +507,62 @@ class ShopProductAPIView(generics.ListAPIView):
         vendor = Vendor.objects.get(slug=vendor_slug)
 
         return Product.objects.filter(vendor=vendor)
+
+
+class ProductCreateView(generics.CreateAPIView):
+    serializer_class = ProductSerializer
+    queryset = Product.objects.all()
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        serializer.is_valid(raise_exception=True)
+
+        serializer.save()
+
+        product_instance = serializer.instance
+
+        specifications_data = []
+        colors_data = []
+        sizes_data = []
+        gallery_data = []
+
+        for key, value in self.request.data.item():
+            if key.startswith("specifications") and "[title]" in key:
+                index = key.split("[")[1].split("]")[0]
+                title = value
+                content_key = f"specifications[{index}][content]"
+                content = self.request.data.get(content_key)
+                specifications_data.append({"title": title, "content": content})
+
+            elif key.startswith("colors") and "[name]" in key:
+                index = key.split("[")[1].split("]")[0]
+                name = value
+                color_code_key = f"colors[{index}][color_code]"
+                color_code = self.request.data.get(color_code_key)
+                colors_data.append({"name": name, "color_code": color_code})
+
+            elif key.startswith("sizes") and "[name]" in key:
+                index = key.split("[")[1].split("]")[0]
+                name = value
+                price_key = f"sizes[{index}][price]"
+                price = self.request.data.get(price_key)
+                sizes_data.append({"name": name, "price": price})
+
+            elif key.startswith("gallery") and "[image]" in key:
+                index = key.split("[")[1].split("]")[0]
+                image = value
+                gallery_data.append({"image": image})
+
+        self.save_nested_data(
+            product_instance, SpecificationSerializer, specifications_data
+        )
+        self.save_nested_data(product_instance, ColorSerializer, colors_data)
+        self.save_nested_data(product_instance, SizeSerializer, sizes_data)
+        self.save_nested_data(product_instance, GallerySerializer, gallery_data)
+
+    def save_nested_data(self, product_instance, serializer_class, data):
+        serializer = serializer_class(
+            data=data, many=True, context={"product_instance": product_instance}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(product=product_instance)
