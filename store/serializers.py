@@ -73,7 +73,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "status",
             "featured",
             "views",
-            "rating",
+            # "rating",
             "vendor",
             "gallery",
             "color",
@@ -95,6 +95,12 @@ class ProductSerializer(serializers.ModelSerializer):
             self.Meta.depth = 0
         else:
             self.Meta.depth = 3
+            
+    def update(self, instance, validated_data):
+        # Remove image from validated_data if it's None
+        if 'image' in validated_data and validated_data['image'] is None:
+            validated_data.pop('image')
+        return super().update(instance, validated_data)
 
 
 class CartSerializer(serializers.ModelSerializer):
