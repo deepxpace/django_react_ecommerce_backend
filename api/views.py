@@ -43,12 +43,15 @@ def proxy_s3_media(request, path):
     possible_paths = [p for p in possible_paths if p]
     logger.info(f"Will try these paths: {possible_paths}")
     
+    # Get the current S3 bucket name
+    current_bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'koshimart-api')
+    
     # Try all possible paths
     last_error = None
     for try_path in possible_paths:
         try:
-            # Build the full S3 URL
-            s3_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{try_path}"
+            # Build the full S3 URL with current bucket
+            s3_url = f"https://{current_bucket}.s3.amazonaws.com/{try_path}"
             logger.info(f"Trying S3 URL: {s3_url}")
             
             # Fetch the file from S3
@@ -65,7 +68,24 @@ def proxy_s3_media(request, path):
                 django_response['Cache-Control'] = 'max-age=86400'
                 return django_response
             else:
-                last_error = f"S3 returned status {response.status_code} for URL {s3_url}"
+                # Try alternative bucket name if current one failed
+                alternative_bucket = 'koshimart-media' if current_bucket == 'koshimart-api' else 'koshimart-api'
+                alt_s3_url = f"https://{alternative_bucket}.s3.amazonaws.com/{try_path}"
+                logger.info(f"Trying alternative S3 URL: {alt_s3_url}")
+                
+                alt_response = requests.get(alt_s3_url, stream=True)
+                if alt_response.status_code == 200:
+                    logger.info(f"Found image at alternative bucket: {alt_s3_url}")
+                    # Success with alternative bucket!
+                    content_type = alt_response.headers.get('Content-Type', 'application/octet-stream')
+                    django_response = HttpResponse(
+                        alt_response.content,
+                        content_type=content_type
+                    )
+                    django_response['Cache-Control'] = 'max-age=86400'
+                    return django_response
+                
+                last_error = f"S3 returned status {response.status_code} for URL {s3_url} and {alt_response.status_code} for alternative URL"
                 logger.warning(last_error)
         except Exception as e:
             last_error = str(e)
