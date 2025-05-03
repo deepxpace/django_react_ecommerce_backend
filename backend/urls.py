@@ -25,7 +25,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
 from store.views import CartDeleteAPIView
-from api.views import proxy_s3_media
+from api.views import proxy_s3_media, debug_image_paths
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -54,4 +54,5 @@ urlpatterns += [
     path('api/v1/cart-delete/<str:cart_id>/<int:item_id>/', CartDeleteAPIView.as_view(), name='cart-delete'),
     path('api/v1/cart-delete/<str:cart_id>/<int:item_id>/<int:user_id>/', CartDeleteAPIView.as_view(), name='cart-delete-with-user'),
     path('media-proxy/<path:path>', proxy_s3_media, name='media_proxy'),
+    path('api/v1/debug/images/', debug_image_paths, name='debug_image_paths'),
 ]
