@@ -43,15 +43,16 @@ def proxy_s3_media(request, path):
     possible_paths = [p for p in possible_paths if p]
     logger.info(f"Will try these paths: {possible_paths}")
     
-    # Get the current S3 bucket name
+    # Get the current S3 bucket name and region
     current_bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'koshimart-api')
+    s3_region = getattr(settings, 'AWS_S3_REGION_NAME', 'eu-north-1')
     
     # Try all possible paths
     last_error = None
     for try_path in possible_paths:
         try:
-            # Build the full S3 URL with current bucket
-            s3_url = f"https://{current_bucket}.s3.amazonaws.com/{try_path}"
+            # Build the full S3 URL with region
+            s3_url = f"https://{current_bucket}.s3.{s3_region}.amazonaws.com/{try_path}"
             logger.info(f"Trying S3 URL: {s3_url}")
             
             # Fetch the file from S3
@@ -68,24 +69,53 @@ def proxy_s3_media(request, path):
                 django_response['Cache-Control'] = 'max-age=86400'
                 return django_response
             else:
-                # Try alternative bucket name if current one failed
-                alternative_bucket = 'koshimart-media' if current_bucket == 'koshimart-api' else 'koshimart-api'
-                alt_s3_url = f"https://{alternative_bucket}.s3.amazonaws.com/{try_path}"
-                logger.info(f"Trying alternative S3 URL: {alt_s3_url}")
+                # Try URL without region
+                alt_s3_url_1 = f"https://{current_bucket}.s3.amazonaws.com/{try_path}"
+                logger.info(f"Trying S3 URL without region: {alt_s3_url_1}")
                 
-                alt_response = requests.get(alt_s3_url, stream=True)
-                if alt_response.status_code == 200:
-                    logger.info(f"Found image at alternative bucket: {alt_s3_url}")
-                    # Success with alternative bucket!
-                    content_type = alt_response.headers.get('Content-Type', 'application/octet-stream')
+                alt_response_1 = requests.get(alt_s3_url_1, stream=True)
+                if alt_response_1.status_code == 200:
+                    logger.info(f"Found image at URL without region: {alt_s3_url_1}")
+                    content_type = alt_response_1.headers.get('Content-Type', 'application/octet-stream')
                     django_response = HttpResponse(
-                        alt_response.content,
+                        alt_response_1.content,
                         content_type=content_type
                     )
                     django_response['Cache-Control'] = 'max-age=86400'
                     return django_response
                 
-                last_error = f"S3 returned status {response.status_code} for URL {s3_url} and {alt_response.status_code} for alternative URL"
+                # Try alternative bucket name
+                alternative_bucket = 'koshimart-media' if current_bucket == 'koshimart-api' else 'koshimart-api'
+                alt_s3_url_2 = f"https://{alternative_bucket}.s3.{s3_region}.amazonaws.com/{try_path}"
+                logger.info(f"Trying alternative bucket with region: {alt_s3_url_2}")
+                
+                alt_response_2 = requests.get(alt_s3_url_2, stream=True)
+                if alt_response_2.status_code == 200:
+                    logger.info(f"Found image at alternative bucket with region: {alt_s3_url_2}")
+                    content_type = alt_response_2.headers.get('Content-Type', 'application/octet-stream')
+                    django_response = HttpResponse(
+                        alt_response_2.content,
+                        content_type=content_type
+                    )
+                    django_response['Cache-Control'] = 'max-age=86400'
+                    return django_response
+                
+                # Try alternative bucket without region
+                alt_s3_url_3 = f"https://{alternative_bucket}.s3.amazonaws.com/{try_path}"
+                logger.info(f"Trying alternative bucket without region: {alt_s3_url_3}")
+                
+                alt_response_3 = requests.get(alt_s3_url_3, stream=True)
+                if alt_response_3.status_code == 200:
+                    logger.info(f"Found image at alternative bucket without region: {alt_s3_url_3}")
+                    content_type = alt_response_3.headers.get('Content-Type', 'application/octet-stream')
+                    django_response = HttpResponse(
+                        alt_response_3.content, 
+                        content_type=content_type
+                    )
+                    django_response['Cache-Control'] = 'max-age=86400'
+                    return django_response
+                
+                last_error = f"S3 returned status {response.status_code} for URL {s3_url}"
                 logger.warning(last_error)
         except Exception as e:
             last_error = str(e)
