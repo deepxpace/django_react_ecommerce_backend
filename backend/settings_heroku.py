@@ -35,13 +35,14 @@ if 'AWS_ACCESS_KEY_ID' in os.environ:
 WEB_CONCURRENCY = os.environ.get('WEB_CONCURRENCY', 3)
 
 # CORS settings for Heroku
-CORS_ALLOW_ALL_ORIGINS = True  # Temporarily allow all origins for testing
+CORS_ALLOW_ALL_ORIGINS = False  # Set to False for security
 
 CORS_ALLOWED_ORIGINS = [
     "https://koshimart.com",
     "https://www.koshimart.com",
     "https://koshimart-frontend.vercel.app",
-    "https://koshimart-store.vercel.app",   # Add your actual Vercel domain here
+    "https://koshimart-store.vercel.app",
+    "https://koshimart.vercel.app",  # Add the main Vercel domain
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:3000"
@@ -51,8 +52,34 @@ CSRF_TRUSTED_ORIGINS = [
     "https://koshimart.com",
     "https://www.koshimart.com",
     "https://koshimart-frontend.vercel.app",
-    "https://koshimart-store.vercel.app"    # Add your actual Vercel domain here
+    "https://koshimart-store.vercel.app",
+    "https://koshimart.vercel.app"  # Add the main Vercel domain
 ]
+
+# Additional CORS settings for handling media files
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
+
+# Allow credentials (cookies, authorization headers)
+CORS_ALLOW_CREDENTIALS = True
 
 # Ensure SSL connection
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
