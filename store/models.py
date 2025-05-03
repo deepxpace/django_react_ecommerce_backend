@@ -179,6 +179,16 @@ class CartOrder(models.Model):
         ("cancelled", "Cancelled"),
     )
 
+    PAYMENT_METHODS = (
+        ("cod", "Cash on Delivery"),
+        ("stripe", "Stripe"),
+        ("paypal", "PayPal"),
+    )
+
+    payment_method = models.CharField(
+        choices=PAYMENT_METHODS, max_length=100, default="stripe"
+    )
+
     vendor = models.ManyToManyField(Vendor, blank=True)
     buyer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
@@ -214,7 +224,7 @@ class CartOrder(models.Model):
     paypal_session_id = models.CharField(max_length=1000, null=True, blank=True)
 
     date = models.DateTimeField(auto_now_add=True)
-    oid = ShortUUIDField(unique=True, length=10, alphabet="abcdefghi12345")
+    oid = models.CharField(max_length=20, unique=True)
 
     def __str__(self):
         return self.oid
@@ -246,7 +256,7 @@ class CartOrderItem(models.Model):
     saved = models.DecimalField(default=0.00, max_digits=12, decimal_places=2)
 
     date = models.DateTimeField(auto_now_add=True)
-    oid = ShortUUIDField(unique=True, length=10, alphabet="abcdefghi12345")
+    oid = models.CharField(max_length=20, unique=True)
 
     def __str__(self):
         return self.oid
@@ -313,6 +323,13 @@ class Wishlist(models.Model):
 
 
 class Notification(models.Model):
+    NOTIFICATION_TYPES = (
+        ("order", "Order"),
+        ("vendor", "Vendor"),
+        ("system", "System"),
+        ("account", "Account"),
+    )
+    
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     vendor = models.ForeignKey(Vendor, on_delete=models.SET_NULL, null=True, blank=True)
     order = models.ForeignKey(
@@ -321,6 +338,7 @@ class Notification(models.Model):
     order_item = models.ForeignKey(
         CartOrderItem, on_delete=models.SET_NULL, null=True, blank=True
     )
+    type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES, default="system")
     seen = models.BooleanField(default=False)
     date = models.DateTimeField(auto_now_add=True)
 

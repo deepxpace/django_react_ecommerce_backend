@@ -1,0 +1,30 @@
+# Django settings
+DEBUG=False
+SECRET_KEY=your_secure_production_secret_key_here
+DJANGO_SETTINGS_MODULE=backend.settings_prod
+
+# Database settings
+DB_NAME=koshimart_db
+DB_USER=koshimart_user
+DB_PASSWORD=secure_database_password
+DB_HOST=localhost
+DB_PORT=5432
+
+# Email settings
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+FROM_EMAIL=noreply@koshimart.com
+DEFAULT_FROM_EMAIL=noreply@koshimart.com
+SERVER_EMAIL=server@koshimart.com
+
+# MailerSend settings
+MAILERSEND_API_KEY=your_mailersend_api_key
+MAILERSEND_SENDER_DOMAIN=koshimart.com
+
+# Payment settings
+STRIPE_PUBLIC_KEY=your_stripe_public_key
+STRIPE_SECRET_KEY=your_stripe_secret_key
+PAYPAL_CLIENT_ID=your_paypal_client_id
+PAYPAL_SECRET_ID=your_paypal_secret_id
+
+# Cache settings
+REDIS_URL=redis://127.0.0.1:6379/1 

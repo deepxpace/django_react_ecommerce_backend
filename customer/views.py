@@ -21,9 +21,24 @@ class OrdersAPIView(generics.ListAPIView):
   
   def get_queryset(self):
     user_id = self.kwargs['user_id']
-    user = User.objects.get(id=user_id)
     
-    orders = CartOrder.objects.filter(buyer=user, payment_status='paid')
+    # Handle case where user_id is undefined or invalid
+    if user_id == 'undefined' or not user_id:
+      if self.request.user.is_authenticated:
+        # Use the authenticated user instead
+        user = self.request.user
+      else:
+        # Return empty queryset if no valid user
+        return CartOrder.objects.none()
+    else:
+      try:
+        user = User.objects.get(id=user_id)
+      except (User.DoesNotExist, ValueError):
+        # Return empty queryset if user doesn't exist or ID is invalid
+        return CartOrder.objects.none()
+    
+    # Show all orders regardless of payment status
+    orders = CartOrder.objects.filter(buyer=user)
     return orders
   
 class OrderDetailAPIView(generics.RetrieveAPIView):
@@ -34,10 +49,38 @@ class OrderDetailAPIView(generics.RetrieveAPIView):
     user_id = self.kwargs['user_id']
     order_oid = self.kwargs['order_oid']
     
-    user = User.objects.get(id=user_id)
+    # Handle case where user_id is undefined, "current", or invalid
+    if user_id in ['undefined', 'null', 'current'] or not user_id:
+      if self.request.user.is_authenticated:
+        # Use the authenticated user instead
+        user = self.request.user
+      else:
+        # Return 404 if no valid user
+        from django.http import Http404
+        raise Http404("User not found - please log in")
+    else:
+      try:
+        user = User.objects.get(id=user_id)
+      except (User.DoesNotExist, ValueError):
+        from django.http import Http404
+        raise Http404("User not found")
     
-    order = CartOrder.objects.get(buyer=user, oid=order_oid, payment_status='paid')
-    return order
+    try:
+      # First try to get order associated with this user
+      order = CartOrder.objects.get(buyer=user, oid=order_oid)
+      return order
+    except CartOrder.DoesNotExist:
+      try:
+        # If not found by user, try to find the order by just OID (for guest orders)
+        order = CartOrder.objects.get(oid=order_oid)
+        # If the current user is authenticated and the order has no buyer, associate it
+        if self.request.user.is_authenticated and not order.buyer:
+          order.buyer = self.request.user
+          order.save()
+        return order
+      except CartOrder.DoesNotExist:
+        from django.http import Http404
+        raise Http404("Order not found")
   
 class WishlistAPIVIew(generics.ListCreateAPIView):
   serializer_class = WishlistSerializer

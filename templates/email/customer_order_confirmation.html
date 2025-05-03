@@ -16,22 +16,38 @@ body, table, td {font-family: Arial, sans-serif !important;}
       <!-- Header -->
       <tr>
         <td style="background-color: #f5b041; padding: 30px; text-align: center;">
+          {% if is_admin_notification %}
+          <h1 style="margin: 0; color: #2c3e50; font-size: 28px; line-height: 32px;">New Order Alert!</h1>
+          <p style="color: #2c3e50; margin: 10px 0 0 0; font-size: 16px;">
+            Order ID: <span style="text-transform: uppercase; font-weight: bold">{{order.oid}}</span> |
+            Payment Status: <span style="text-transform: uppercase; font-weight: bold">{{order.payment_status}}</span>
+          </p>
+          {% else %}
           <h1 style="margin: 0; color: #2c3e50; font-size: 28px; line-height: 32px;">Order & Payment Confirmation!</h1>
           <p style="color: #2c3e50; margin: 10px 0 0 0; font-size: 16px;">
             Payment Status:
             <span style="text-transform: uppercase; font-weight: bold">{{order.payment_status}}</span>
           </p>
+          {% endif %}
         </td>
       </tr>
 
       <!-- Main Content -->
       <tr>
         <td style="padding: 30px;">
-          <h2 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 24px;">Hey, {{order.full_name}}!</h2>
+          {% if is_admin_notification %}
+          <h2 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 24px;">New Order Notification</h2>
           <p style="color: #555; line-height: 1.6; margin: 0 0 25px 0;">
-            Thanks for shopping with <strong>Upfront</strong>! Your order ID is
+            A new order has been placed on Koshimart with order ID 
             <span style="color: #f5b041; font-weight: bold">#{{order.oid}}</span>.
           </p>
+          {% else %}
+          <h2 style="color: #2c3e50; margin: 0 0 20px 0; font-size: 24px;">Hey, {{order.full_name}}!</h2>
+          <p style="color: #555; line-height: 1.6; margin: 0 0 25px 0;">
+            Thanks for shopping with <strong>Koshimart</strong>! Your order ID is
+            <span style="color: #f5b041; font-weight: bold">#{{order.oid}}</span>.
+          </p>
+          {% endif %}
 
           <!-- Vendor Info -->
           <table role="presentation" cellpadding="0" cellspacing="0" style="width: 100%; margin-bottom: 25px; background-color: #f8f9fa; border-radius: 6px;">
@@ -173,7 +189,7 @@ body, table, td {font-family: Arial, sans-serif !important;}
 
           <p style="color: #555; line-height: 1.6; margin: 0;">
             Best regards,<br>
-            <strong style="color: #2c3e50">Upfront Team</strong>
+            <strong style="color: #2c3e50">Koshimart Team</strong>
           </p>
         </td>
       </tr>
@@ -182,7 +198,7 @@ body, table, td {font-family: Arial, sans-serif !important;}
       <tr>
         <td style="background-color: #2c3e50; padding: 20px; text-align: center;">
           <p style="color: #fff; margin: 0; font-size: 14px;">
-            © {% now "Y" %} Upfront. All rights reserved.
+            © {% now "Y" %} Koshimart. All rights reserved.
           </p>
         </td>
       </tr>

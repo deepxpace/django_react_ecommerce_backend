@@ -1,6 +1,6 @@
 from django.urls import path
 
-from rest_framework_simplejwt.views import TokenRefreshView
+from userauths.views import MyTokenRefreshView
 
 from userauths import views as userauths_views
 from store import views as store_views
@@ -10,7 +10,7 @@ from vendor import views as vendor_views
 urlpatterns = [
     # USER ENDPOINTS
     path("user/token/", userauths_views.MyTokenObtainPairView.as_view()),
-    path("user/token/refresh/", TokenRefreshView.as_view()),
+    path("user/token/refresh/", MyTokenRefreshView.as_view()),
     path("user/register/", userauths_views.RegisterView.as_view()),
     path(
         "user/password-reset/<email>/",
@@ -24,6 +24,7 @@ urlpatterns = [
     path("products/<slug>/", store_views.ProductDetailAPIView.as_view()),
     path("cart-view/", store_views.CartAPIView.as_view()),
     path("cart-list/<str:cart_id>/<int:user_id>/", store_views.CartListView.as_view()),
+    path("cart-list/<str:cart_id>/null/", store_views.CartListView.as_view()),
     path("cart-list/<str:cart_id>/", store_views.CartListView.as_view()),
     path(
         "cart-detail/<str:cart_id>/<int:user_id>/", store_views.CartDetailView.as_view()
@@ -44,6 +45,7 @@ urlpatterns = [
     path("search/", store_views.SearchProductAPIView.as_view()),
     # PAYMENT ENDPOINTS
     path("stripe-checkout/<order_oid>/", store_views.StripeCheckoutAPIView.as_view()),
+    path("order/cod/<order_oid>/", store_views.CashOnDeliveryAPIView.as_view()),
     path("payment-success/<order_oid>/", store_views.PaymentSuccessView.as_view()),
     # CUSTOMER ENDPOINTS
     path("customer/orders/<user_id>/", customer_views.OrdersAPIView.as_view()),

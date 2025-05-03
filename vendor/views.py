@@ -155,9 +155,14 @@ class OrderAPIView(generics.ListAPIView):
         vendor_id = self.kwargs["vendor_id"]
         vendor = Vendor.objects.get(id=vendor_id)
 
-        return CartOrder.objects.filter(vendor=vendor, payment_status="paid").order_by(
-            "-id"
-        )
+        # Include both paid orders and pending orders with Cash On Delivery payment method
+        return CartOrder.objects.filter(
+            vendor=vendor
+        ).filter(
+            # Show both paid orders and pending COD orders
+            models.Q(payment_status="paid") | 
+            models.Q(payment_status="pending", payment_method="Cash On Delivery")
+        ).order_by("-id")
 
 
 class OrderDetailAPIView(generics.RetrieveAPIView):

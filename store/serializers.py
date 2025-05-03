@@ -149,6 +149,11 @@ class CartOrderSerializer(serializers.ModelSerializer):
         else:
             self.Meta.depth = 3
 
+    def validate_payment_method(self, value):
+        if value not in ["cod", "stripe", "paypal"]:
+            raise serializers.ValidationError("Invalid payment method.")
+        return value
+
 
 class ProductFaqSerializer(serializers.ModelSerializer):
     class Meta:

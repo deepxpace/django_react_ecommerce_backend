@@ -1,6 +1,7 @@
 from django.shortcuts import redirect
 from django.conf import settings
 from django.template.loader import render_to_string
+from django.core.mail import send_mail
 
 from mailersend import emails
 
@@ -117,10 +118,13 @@ class CartAPIView(generics.ListCreateAPIView):
                 "price"
             ]  # fallback to default price if no size variant found
 
-        if user_id != "undefined":
-            user = User.objects.get(id=user_id)
-        else:
-            user = None
+        # Better handling of anonymous users
+        user = None
+        if user_id and user_id not in ("undefined", "null"):
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                user = None
 
         tax = Tax.objects.filter(country=country).first()
 
@@ -130,6 +134,19 @@ class CartAPIView(generics.ListCreateAPIView):
             tax_rate = 0
 
         cart = Cart.objects.filter(cart_id=cart_id, product=product).first()
+
+        if int(qty) == 0:
+            if cart:
+                cart.delete()
+                return Response(
+                    {"message": "Item removed from cart"},
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                return Response(
+                    {"error": "Item not found in cart"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         if cart:
             cart.product = product
@@ -277,7 +294,7 @@ class CartItemDeleteAPIView(generics.DestroyAPIView):
             user = User.objects.get(id=user_id)
             cart = Cart.objects.get(id=item_id, cart_id=cart_id, user=user)
         else:
-            cart = Cart.objects.get(id=item_id, cart=cart_id)
+            cart = Cart.objects.get(id=item_id, cart_id=cart_id)
 
         return cart
 
@@ -288,6 +305,88 @@ class CreateOrderAPIView(generics.CreateAPIView):
     permission_classes = [
         AllowAny,
     ]
+
+    def _send_admin_notification(self, order, order_items):
+        """Send email notification to admin"""
+        try:
+            print(f"Attempting to send admin notification for order {order.oid}")
+            
+            # First, create a database notification for admin users
+            try:
+                # Find admin users
+                admin_users = User.objects.filter(is_superuser=True)
+                print(f"Found {admin_users.count()} admin users")
+                
+                # Create notification for each admin
+                for admin in admin_users:
+                    notification = Notification.objects.create(
+                        user=admin,
+                        order=order,
+                        seen=False
+                    )
+                    notification.save()
+                    print(f"Created database notification for admin: {admin.email}")
+            except Exception as notif_error:
+                print(f"Error creating admin database notification: {str(notif_error)}")
+            
+            # Then continue with email notification
+            context = {
+                "order": order,
+                "order_items": order_items,
+                "is_admin_notification": True,
+            }
+
+            mail_body = {}
+            mail_from = {
+                "name": "Koshimart System",
+                "email": settings.FROM_EMAIL,
+            }
+            
+            # Admin email - hardcoded to ensure it's correct
+            admin_email = "deepxpacelab@gmail.com"
+            
+            recipients = [
+                {
+                    "name": "Admin",
+                    "email": admin_email,
+                }
+            ]
+            
+            print(f"Sending admin notification to {admin_email}")
+            print(f"Using FROM_EMAIL: {settings.FROM_EMAIL}")
+            print(f"Using MAILERSEND_API_KEY: {settings.MAILERSEND_API_KEY[:5]}...")
+
+            # First try with MailerSend
+            try:
+                mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
+                mailer.set_mail_from(mail_from, mail_body)
+                mailer.set_mail_to(recipients, mail_body)
+                mailer.set_subject(f"[ADMIN ALERT] New Order #{order.oid} Placed", mail_body)
+                
+                email_content = render_to_string("email/customer_order_confirmation.html", context)
+                mailer.set_html_content(email_content, mail_body)
+
+                # Send the email
+                response = mailer.send(mail_body)
+                print(f"Admin email send response: {response}")
+            except Exception as mail_error:
+                print(f"MailerSend error: {str(mail_error)}")
+                # Try Django's built-in mail as a fallback
+                send_mail(
+                    subject=f"[ADMIN ALERT] New Order #{order.oid} Placed",
+                    message=f"New order placed with ID: {order.oid}. Total amount: ${order.total}. Payment status: {order.payment_status}",
+                    from_email=settings.FROM_EMAIL,
+                    recipient_list=[admin_email],
+                    fail_silently=False,
+                    html_message=email_content
+                )
+                print("Sent admin notification using Django's built-in email function")
+            
+            print(f"Admin notification sent successfully for order {order.oid}")
+            
+        except Exception as e:
+            print(f"Admin notification error: {str(e)}")
+            print(f"Detailed error: {traceback.format_exc()}")
 
     def create(self, request):
         payload = request.data
@@ -301,6 +400,7 @@ class CreateOrderAPIView(generics.CreateAPIView):
         country = payload["country"]
         cart_id = payload["cart_id"]
         user_id = payload["user_id"]
+        payment_method = payload.get("payment_method", "stripe")
 
         try:
             user = User.objects.get(id=user_id)
@@ -325,6 +425,7 @@ class CreateOrderAPIView(generics.CreateAPIView):
             city=city,
             state=state,
             country=country,
+            payment_method=payment_method,
         )
 
         for c in cart_items:
@@ -361,12 +462,22 @@ class CreateOrderAPIView(generics.CreateAPIView):
         order.total = total_total
 
         order.save()
+        
+        # Get all order items for this order
+        order_items = CartOrderItem.objects.filter(order=order)
+        
+        # Send admin notification
+        self._send_admin_notification(order, order_items)
 
         return Response(
             {"message": "Order Created Successfully", "order_oid": order.oid},
             status=status.HTTP_201_CREATED,
         )
 
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CheckoutView(generics.RetrieveAPIView):
     serializer_class = CartOrderSerializer
@@ -377,9 +488,15 @@ class CheckoutView(generics.RetrieveAPIView):
 
     def get_object(self):
         order_oid = self.kwargs["order_oid"]
-        order = CartOrder.objects.get(oid=order_oid)
-
-        return order
+        logger.info(f"Fetching CartOrder with oid: {order_oid}")
+        try:
+            order = CartOrder.objects.get(oid=order_oid)
+            return order
+        except CartOrder.DoesNotExist:
+            logger.error(f"CartOrder with oid {order_oid} does not exist.")
+            # Properly handle the not found case by using Django's standard 404 handling
+            from django.http import Http404
+            raise Http404(f"Order with ID {order_oid} not found")
 
 
 class CouponAPIView(generics.CreateAPIView):
@@ -459,9 +576,10 @@ class StripeCheckoutAPIView(generics.CreateAPIView):
 
     def create(self, *args, **kwargs):
         order_oid = self.kwargs["order_oid"]
-        order = CartOrder.objects.get(oid=order_oid)
-
-        if not order:
+        try:
+            order = CartOrder.objects.get(oid=order_oid)
+        except CartOrder.DoesNotExist:
+            logger.error(f"Order with oid {order_oid} not found during Stripe checkout")
             return Response(
                 {"message": "Order not Found"}, status=status.HTTP_404_NOT_FOUND
             )
@@ -581,7 +699,7 @@ class PaymentSuccessView(generics.CreateAPIView):
 
             mail_body = {}
             mail_from = {
-                "name": "Upfront",
+                "name": "Koshimart",
                 "email": settings.FROM_EMAIL,
             }
             recipients = [
@@ -590,19 +708,30 @@ class PaymentSuccessView(generics.CreateAPIView):
                     "email": vendor.user.email,
                 }
             ]
-
+            
+            # Create notification
+            notification = Notification.objects.create(
+                vendor=vendor,
+                order=order,
+                seen=False
+            )
+            notification.save()
+            
+            # Send an email
             mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
             mailer.set_mail_from(mail_from, mail_body)
             mailer.set_mail_to(recipients, mail_body)
-            mailer.set_subject("New sale!", mail_body)
+            mailer.set_subject(f"New Order on Koshimart - #{order.oid}", mail_body)
             mailer.set_html_content(
                 render_to_string("email/vendor_sale.html", context), mail_body
             )
-
+            
             mailer.send(mail_body)
-
+            print(f"Notification sent to vendor {vendor.name} for order {order.oid}")
+            
         except Exception as e:
-            print(f"Vendor notification error: {traceback.format_exc()}")
+            print(f"Error sending vendor notification: {str(e)}")
+            print(traceback.format_exc())
 
     def _send_customer_notification(self, order, order_items):
         """Send email notification to customer"""
@@ -614,7 +743,7 @@ class PaymentSuccessView(generics.CreateAPIView):
 
             mail_body = {}
             mail_from = {
-                "name": "Upfront",
+                "name": "Koshimart",
                 "email": settings.FROM_EMAIL,
             }
             recipients = [
@@ -637,6 +766,88 @@ class PaymentSuccessView(generics.CreateAPIView):
         except Exception as e:
             print(f"Customer notification error: {traceback.format_exc()}")
 
+    def _send_admin_notification(self, order, order_items):
+        """Send email notification to admin"""
+        try:
+            print(f"Attempting to send admin notification for order {order.oid}")
+            
+            # First, create a database notification for admin users
+            try:
+                # Find admin users
+                admin_users = User.objects.filter(is_superuser=True)
+                print(f"Found {admin_users.count()} admin users")
+                
+                # Create notification for each admin
+                for admin in admin_users:
+                    notification = Notification.objects.create(
+                        user=admin,
+                        order=order,
+                        seen=False
+                    )
+                    notification.save()
+                    print(f"Created database notification for admin: {admin.email}")
+            except Exception as notif_error:
+                print(f"Error creating admin database notification: {str(notif_error)}")
+            
+            # Then continue with email notification
+            context = {
+                "order": order,
+                "order_items": order_items,
+                "is_admin_notification": True,
+            }
+
+            mail_body = {}
+            mail_from = {
+                "name": "Koshimart System",
+                "email": settings.FROM_EMAIL,
+            }
+            
+            # Admin email - hardcoded to ensure it's correct
+            admin_email = "deepxpacelab@gmail.com"
+            
+            recipients = [
+                {
+                    "name": "Admin",
+                    "email": admin_email,
+                }
+            ]
+            
+            print(f"Sending admin notification to {admin_email}")
+            print(f"Using FROM_EMAIL: {settings.FROM_EMAIL}")
+            print(f"Using MAILERSEND_API_KEY: {settings.MAILERSEND_API_KEY[:5]}...")
+
+            # First try with MailerSend
+            try:
+                mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
+                mailer.set_mail_from(mail_from, mail_body)
+                mailer.set_mail_to(recipients, mail_body)
+                mailer.set_subject(f"[ADMIN ALERT] New Order #{order.oid} Placed", mail_body)
+                
+                email_content = render_to_string("email/customer_order_confirmation.html", context)
+                mailer.set_html_content(email_content, mail_body)
+
+                # Send the email
+                response = mailer.send(mail_body)
+                print(f"Admin email send response: {response}")
+            except Exception as mail_error:
+                print(f"MailerSend error: {str(mail_error)}")
+                # Try Django's built-in mail as a fallback
+                send_mail(
+                    subject=f"[ADMIN ALERT] New Order #{order.oid} Placed",
+                    message=f"New order placed with ID: {order.oid}. Total amount: ${order.total}. Payment status: {order.payment_status}",
+                    from_email=settings.FROM_EMAIL,
+                    recipient_list=[admin_email],
+                    fail_silently=False,
+                    html_message=email_content
+                )
+                print("Sent admin notification using Django's built-in email function")
+            
+            print(f"Admin notification sent successfully for order {order.oid}")
+            
+        except Exception as e:
+            print(f"Admin notification error: {str(e)}")
+            print(f"Detailed error: {traceback.format_exc()}")
+
     def _process_successful_payment(self, order, order_items, transaction_id=None):
         """Process successful payment and send notifications"""
         if order.payment_status != "pending":
@@ -644,9 +855,18 @@ class PaymentSuccessView(generics.CreateAPIView):
                 {"message": "Payment has already been processed", "status": "info"}
             )
 
-        order.payment_status = "paid"
+        # Only mark non-COD orders as paid
+        if order.payment_method != "Cash On Delivery":
+            order.payment_status = "paid"
+        # Cash on Delivery orders should remain pending until delivery
+        else:
+            order.payment_status = "pending"
+            
         if transaction_id:  # Save the transaction ID
             order.paypal_order_id = transaction_id
+        # Mark Cash on Delivery orders as processing
+        if order.payment_method == "Cash On Delivery":
+            order.order_status = "processing"
         order.save()
 
         # Send notifications
@@ -661,6 +881,9 @@ class PaymentSuccessView(generics.CreateAPIView):
                 send_notification(vendor=item.vendor, order=order, order_item=item)
                 self._send_vendor_notification(item.vendor, order, order_items)
                 vendors_notified.add(item.vendor.id)
+        
+        # Send admin notification
+        self._send_admin_notification(order, order_items)
 
         return Response(
             {"message": "Payment completed successfully", "status": "success"}
@@ -686,6 +909,10 @@ class PaymentSuccessView(generics.CreateAPIView):
                 return Response(
                     {"message": "Order not found"}, status=status.HTTP_404_NOT_FOUND
                 )
+                
+            # Cash on Delivery payment
+            if order.payment_method == "Cash On Delivery":
+                return self._process_successful_payment(order, order_items)
 
             # PayPal Payment
             if paypal_order_id and paypal_order_id != "null":
@@ -813,7 +1040,7 @@ class SearchProductAPIView(generics.ListCreateAPIView):
             queryset = queryset.filter(price__gte=min_price)
 
         if max_price:
-            queryset = queryset.filter(price__lte=max_price)
+            queryset = queryset.filter(price__lte=min_price)
 
         if in_stock == "true":
             queryset = queryset.filter(in_stock=True)
@@ -829,3 +1056,344 @@ class SearchProductAPIView(generics.ListCreateAPIView):
                 queryset = queryset.order_by("-date")
 
         return queryset
+
+
+from rest_framework.views import APIView
+import logging
+
+logger = logging.getLogger(__name__)
+
+class CartDeleteAPIView(APIView):
+    def delete(self, request, cart_id, item_id, user_id=None):
+        logger.info(f"Received DELETE request for cart_id: {cart_id}, item_id: {item_id}, user_id: {user_id}")
+        try:
+            if user_id:
+                user = User.objects.get(id=user_id)
+                cart_item = Cart.objects.get(id=item_id, cart_id=cart_id, user=user)
+            else:
+                cart_item = Cart.objects.get(id=item_id, cart_id=cart_id)
+
+            cart_item.delete()
+            logger.info(f"Successfully deleted item_id: {item_id} from cart_id: {cart_id}")
+            return Response({"message": "Item removed successfully"}, status=status.HTTP_200_OK)
+        except Cart.DoesNotExist:
+            logger.error(f"Item not found in cart for cart_id: {cart_id}, item_id: {item_id}")
+            return Response({"error": "Item not found in cart"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error while deleting item from cart: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+from uuid import uuid4
+
+class CreateOrderAPIView(APIView):
+    def post(self, request):
+        logger.info("Received POST request for order creation")
+        logger.info(f"Request data: {request.data}")
+        try:
+            data = request.data
+            user_id = data.get("user_id")
+            cart_id = data.get("cart_id", "")
+            user = None
+            
+            if user_id and user_id != "undefined" and user_id != "0":
+                try:
+                    user = User.objects.get(id=user_id)
+                    logger.info(f"Found user with id {user_id}")
+                except User.DoesNotExist:
+                    logger.warning(f"User with id {user_id} does not exist. Proceeding without a user.")
+                    user = None
+            else:
+                logger.warning("No valid user ID provided. Proceeding without a user.")
+                
+                # Try to get user from authenticated request if available
+                if request.user and request.user.is_authenticated:
+                    user = request.user
+                    logger.info(f"Using authenticated user: {user.email} (id: {user.id})")
+                else:
+                    user = None
+
+            # Generate a date-based order ID with a shorter random component
+            import datetime
+            import random
+            import string
+            
+            today = datetime.datetime.now()
+            date_prefix = today.strftime("%Y%m%d")
+            # Generate 6 random alphanumeric characters
+            random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            unique_oid = f"{date_prefix}-{random_suffix}"
+            
+            # Create the order
+            order = CartOrder.objects.create(
+                oid=unique_oid,
+                buyer=user,
+                full_name=data.get("full_name"),
+                email=data.get("email"),
+                mobile=data.get("mobile"),
+                address=data.get("address"),
+                city=data.get("city"),
+                state=data.get("state"),
+                country=data.get("country"),
+                payment_method=data.get("payment_method", "stripe"),
+            )
+
+            # Get cart items and add them to the order
+            if cart_id:
+                cart_items = Cart.objects.filter(cart_id=cart_id)
+                logger.info(f"Found {cart_items.count()} cart items for cart_id {cart_id}")
+                
+                total_shipping = Decimal(0.00)
+                total_tax = Decimal(0.00)
+                total_service_fee = Decimal(0.00)
+                total_sub_total = Decimal(0.00)
+                total_initial_total = Decimal(0.00)
+                total_total = Decimal(0.00)
+                
+                # Add each cart item to the order
+                for c in cart_items:
+                    if c.product and c.product.vendor:
+                        # Generate unique OID for each order item
+                        item_random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+                        item_oid = f"{date_prefix}-{item_random_suffix}"
+                        
+                        CartOrderItem.objects.create(
+                            oid=item_oid,
+                            order=order,
+                            product=c.product,
+                            vendor=c.product.vendor,
+                            qty=c.qty,
+                            color=c.color,
+                            size=c.size,
+                            price=c.price,
+                            sub_total=c.sub_total,
+                            shipping_amount=c.shipping_amount,
+                            service_fee=c.service_fee,
+                            tax_fee=c.tax_fee,
+                            total=c.total,
+                            initial_total=c.total,
+                        )
+
+                        total_shipping += Decimal(c.shipping_amount)
+                        total_tax += Decimal(c.tax_fee)
+                        total_service_fee += Decimal(c.service_fee)
+                        total_sub_total += Decimal(c.sub_total)
+                        total_initial_total += Decimal(c.total)
+                        total_total += Decimal(c.total)
+
+                        # Add the vendor to the order
+                        order.vendor.add(c.product.vendor)
+                
+                # Update order totals
+                order.sub_total = total_sub_total
+                order.shipping_amount = total_shipping
+                order.tax_fee = total_tax
+                order.service_fee = total_service_fee
+                order.initial_total = total_initial_total
+                order.total = total_total
+                order.save()
+                
+                logger.info(f"Updated order totals: total={total_total}, items={cart_items.count()}")
+            else:
+                logger.warning("No cart_id provided, order created without items")
+
+            logger.info(f"Order created successfully with OID: {order.oid}")
+            return Response({"order_oid": order.oid, "message": "Order created successfully"}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Error while creating order: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CashOnDeliveryAPIView(generics.CreateAPIView):
+    serializer_class = CartOrderSerializer
+    permission_classes = [
+        AllowAny,
+    ]
+    queryset = CartOrder.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        order_oid = self.kwargs["order_oid"]
+        
+        try:
+            order = CartOrder.objects.get(oid=order_oid)
+            
+            if not order:
+                return Response(
+                    {"error": "Order not found", "success": False}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+                
+            # Update order payment method and status
+            order.payment_method = "Cash On Delivery"
+            order.payment_status = "pending"
+            order.order_status = "processing"
+            order.save()
+            
+            # Get all order items for this order
+            order_items = CartOrderItem.objects.filter(order=order)
+            
+            # Notify vendors about new order
+            vendors = set()
+            
+            for item in order_items:
+                product = item.product
+                if product.vendor not in vendors:
+                    vendors.add(product.vendor)
+                    self._send_vendor_notification(product.vendor, order, order_items.filter(product__vendor=product.vendor))
+            
+            # Send admin notification
+            self._send_admin_notification(order, order_items)
+            
+            # Clear the cart after successful checkout
+            cart_id = request.data.get("cart_id", None)
+            if cart_id:
+                Cart.objects.filter(cart_id=cart_id).delete()
+                logger.info(f"Cart {cart_id} cleared after successful checkout")
+                    
+            return Response(
+                {
+                    "success": True,
+                    "message": "Order placed successfully with Cash on Delivery!",
+                    "order_oid": order_oid,
+                },
+                status=status.HTTP_200_OK
+            )
+            
+        except CartOrder.DoesNotExist:
+            return Response(
+                {"error": "Order not found", "success": False}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error processing Cash on Delivery order: {str(e)}")
+            return Response(
+                {"error": str(e), "success": False},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            
+    def _send_vendor_notification(self, vendor, order, order_items):
+        """Send email notification to vendor"""
+        try:
+            context = {
+                "order": order,
+                "order_items": order_items,
+                "vendor": vendor,
+                **calculate_vendor_totals(order_items, vendor),
+            }
+
+            mail_body = {}
+            mail_from = {
+                "name": "Koshimart",
+                "email": settings.FROM_EMAIL,
+            }
+            recipients = [
+                {
+                    "name": vendor.name,
+                    "email": vendor.user.email,
+                }
+            ]
+            
+            # Create notification
+            notification = Notification.objects.create(
+                vendor=vendor,
+                order=order,
+                seen=False
+            )
+            notification.save()
+            
+            # Send an email
+            mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
+            mailer.set_mail_from(mail_from, mail_body)
+            mailer.set_mail_to(recipients, mail_body)
+            mailer.set_subject(f"New Order on Koshimart - #{order.oid}", mail_body)
+            mailer.set_html_content(
+                render_to_string("email/vendor_sale.html", context), mail_body
+            )
+            
+            mailer.send(mail_body)
+            print(f"Notification sent to vendor {vendor.name} for order {order.oid}")
+            
+        except Exception as e:
+            print(f"Error sending vendor notification: {str(e)}")
+            print(traceback.format_exc())
+            
+    def _send_admin_notification(self, order, order_items):
+        """Send email notification to admin"""
+        try:
+            print(f"Attempting to send admin notification for order {order.oid}")
+            
+            # First, create a database notification for admin users
+            try:
+                # Find admin users
+                admin_users = User.objects.filter(is_superuser=True)
+                print(f"Found {admin_users.count()} admin users")
+                
+                # Create notification for each admin
+                for admin in admin_users:
+                    notification = Notification.objects.create(
+                        user=admin,
+                        order=order,
+                        seen=False
+                    )
+                    notification.save()
+                    print(f"Created database notification for admin: {admin.email}")
+            except Exception as notif_error:
+                print(f"Error creating admin database notification: {str(notif_error)}")
+            
+            # Then continue with email notification
+            context = {
+                "order": order,
+                "order_items": order_items,
+                "is_admin_notification": True,
+            }
+
+            mail_body = {}
+            mail_from = {
+                "name": "Koshimart System",
+                "email": settings.FROM_EMAIL,
+            }
+            
+            # Admin email - hardcoded to ensure it's correct
+            admin_email = "deepxpacelab@gmail.com"
+            
+            recipients = [
+                {
+                    "name": "Admin",
+                    "email": admin_email,
+                }
+            ]
+            
+            print(f"Sending admin notification to {admin_email}")
+            print(f"Using FROM_EMAIL: {settings.FROM_EMAIL}")
+            print(f"Using MAILERSEND_API_KEY: {settings.MAILERSEND_API_KEY[:5]}...")
+
+            # First try with MailerSend
+            try:
+                mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
+                mailer.set_mail_from(mail_from, mail_body)
+                mailer.set_mail_to(recipients, mail_body)
+                mailer.set_subject(f"[ADMIN ALERT] New Order #{order.oid} Placed", mail_body)
+                
+                email_content = render_to_string("email/customer_order_confirmation.html", context)
+                mailer.set_html_content(email_content, mail_body)
+
+                # Send the email
+                response = mailer.send(mail_body)
+                print(f"Admin email send response: {response}")
+            except Exception as mail_error:
+                print(f"MailerSend error: {str(mail_error)}")
+                # Try Django's built-in mail as a fallback
+                send_mail(
+                    subject=f"[ADMIN ALERT] New Order #{order.oid} Placed",
+                    message=f"New order placed with ID: {order.oid}. Total amount: ${order.total}. Payment status: {order.payment_status}",
+                    from_email=settings.FROM_EMAIL,
+                    recipient_list=[admin_email],
+                    fail_silently=False,
+                    html_message=email_content
+                )
+                print("Sent admin notification using Django's built-in email function")
+            
+            print(f"Admin notification sent successfully for order {order.oid}")
+            
+        except Exception as e:
+            print(f"Admin notification error: {str(e)}")
+            print(f"Detailed error: {traceback.format_exc()}")

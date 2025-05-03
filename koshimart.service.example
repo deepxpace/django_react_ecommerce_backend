@@ -1,0 +1,17 @@
+[Unit]
+Description=Koshimart Django application
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/koshimart/backend
+ExecStart=/var/www/koshimart/backend/venv/bin/gunicorn backend.wsgi:application -c /var/www/koshimart/backend/gunicorn_config.py
+Environment="DJANGO_SETTINGS_MODULE=backend.settings_prod"
+EnvironmentFile=/var/www/koshimart/backend/.env
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target 

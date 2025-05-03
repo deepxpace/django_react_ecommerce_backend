@@ -1,0 +1,80 @@
+{
+  "name": "koshimart-api",
+  "description": "Koshimart E-commerce API Backend",
+  "repository": "https://github.com/yourusername/django_react_ecommerce_backend-1",
+  "keywords": ["django", "python", "ecommerce", "api"],
+  "env": {
+    "DJANGO_SETTINGS_MODULE": {
+      "description": "Set Django settings to Heroku-specific settings",
+      "value": "backend.settings_heroku"
+    },
+    "SECRET_KEY": {
+      "description": "Django secret key for security",
+      "generator": "secret"
+    },
+    "DEBUG": {
+      "description": "Debug mode for Django",
+      "value": "False"
+    },
+    "MAILERSEND_API_KEY": {
+      "description": "API key for MailerSend email service",
+      "required": true
+    },
+    "MAILERSEND_SENDER_DOMAIN": {
+      "description": "Sender domain for MailerSend",
+      "value": "koshimart.com"
+    },
+    "FROM_EMAIL": {
+      "description": "Default from email address",
+      "value": "noreply@koshimart.com"
+    },
+    "DEFAULT_FROM_EMAIL": {
+      "description": "Default from email address",
+      "value": "noreply@koshimart.com"
+    },
+    "SERVER_EMAIL": {
+      "description": "Server email address",
+      "value": "server@koshimart.com"
+    },
+    "STRIPE_PUBLIC_KEY": {
+      "description": "Stripe public key",
+      "required": true
+    },
+    "STRIPE_SECRET_KEY": {
+      "description": "Stripe secret key",
+      "required": true
+    },
+    "PAYPAL_CLIENT_ID": {
+      "description": "PayPal client ID",
+      "required": true
+    },
+    "PAYPAL_SECRET_ID": {
+      "description": "PayPal secret ID",
+      "required": true
+    },
+    "EMAIL_BACKEND": {
+      "description": "Email backend for Django",
+      "value": "django.core.mail.backends.smtp.EmailBackend"
+    },
+    "AWS_ACCESS_KEY_ID": {
+      "description": "AWS access key for S3 storage",
+      "required": true
+    },
+    "AWS_SECRET_ACCESS_KEY": {
+      "description": "AWS secret key for S3 storage",
+      "required": true
+    },
+    "AWS_STORAGE_BUCKET_NAME": {
+      "description": "AWS S3 bucket name",
+      "value": "koshimart-media"
+    }
+  },
+  "addons": [
+    "heroku-postgresql:hobby-dev"
+  ],
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+} 
