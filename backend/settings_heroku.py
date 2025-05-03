@@ -12,6 +12,10 @@ ALLOWED_HOSTS = ['.herokuapp.com', 'koshimart.com', 'www.koshimart.com']
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATIC_URL = '/static/'
 
+# Ensure WhiteNoise is properly configured
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 # Media files should use Amazon S3 for Heroku
 if 'AWS_ACCESS_KEY_ID' in os.environ:
     AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
@@ -42,12 +46,6 @@ CSRF_TRUSTED_ORIGINS = [
     "https://www.koshimart.com",
     "https://koshimart-frontend.vercel.app"
 ]
-
-# Security middleware
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
-
-# Static file compression
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Ensure SSL connection
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
