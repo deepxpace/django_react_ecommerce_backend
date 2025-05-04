@@ -41,6 +41,7 @@ WEB_CONCURRENCY = os.environ.get('WEB_CONCURRENCY', 3)
 
 # CORS settings for Heroku
 CORS_ALLOW_ALL_ORIGINS = False  # Keep security by not allowing all origins
+CORS_ALLOW_CREDENTIALS = True   # Allow credentials (cookies, authorization headers)
 
 # Make sure the frontend domains are added to CORS allowed origins
 CORS_ALLOWED_ORIGINS = [
@@ -49,16 +50,24 @@ CORS_ALLOWED_ORIGINS = [
     "https://koshimart-frontend.vercel.app",
     "https://koshimart-store.vercel.app",
     "https://koshimart.vercel.app",
+    # Add all possible Vercel domains
+    "https://koshimart-git-main.vercel.app",
+    "https://koshimart-web.vercel.app",
+    "https://koshimart-frontend-git-main.vercel.app", 
+    # Development environments
     "http://localhost:5173",
     "http://localhost:5174",
-    "http://localhost:3000"
+    "http://localhost:5175",
+    "http://localhost:3000",
+    # Add your specific Vercel deployment URL here if not covered above
+    "https://django-react-ecommerce-frontend-1.vercel.app"
 ]
 
 # Add Cloudinary to CORS allowed origins
 CORS_ALLOWED_ORIGINS += ["https://res.cloudinary.com"]
 
-# Enable CORS for all media URLs
-CORS_URLS_REGEX = r'^/media/.*$|^/media-proxy/.*$|^/static/.*$'
+# Enable CORS for all API endpoints, not just media
+CORS_URLS_REGEX = r'^.*$'
 
 # These headers are needed for proper image loading
 CORS_ALLOW_HEADERS = [
