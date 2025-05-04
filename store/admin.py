@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib import messages
 from store.models import (
     Category,
     Product,
@@ -23,6 +24,9 @@ from store.models import (
 class GalleryInline(admin.TabularInline):
     model = Gallery
     extra = 0
+    
+    def get_max_num(self, request, obj=None, **kwargs):
+        return 10  # Limit to 10 images to prevent upload issues
 
 
 class SpecificationInline(admin.TabularInline):
@@ -55,11 +59,32 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ["date"]
     search_fields = ["title"]
     inlines = [GalleryInline, SpecificationInline, SizeInline, ColorInline]
+    save_on_top = True
+    
+    def save_model(self, request, obj, form, change):
+        """Override save_model to add validation and handle image uploads."""
+        try:
+            # Check if title is not too long to avoid DB errors
+            if len(obj.title) > 90:
+                obj.title = obj.title[:90]
+                messages.warning(request, "Title was truncated to 90 characters")
+            
+            # Ensure slug doesn't exceed the max length
+            if obj.slug and len(obj.slug) > 40:
+                obj.slug = obj.slug[:40]
+                messages.warning(request, "Slug was truncated to 40 characters")
+                
+            # Now save the model
+            super().save_model(request, obj, form, change)
+            messages.success(request, f"Product '{obj.title}' saved successfully")
+        except Exception as e:
+            messages.error(request, f"Error saving product: {str(e)}")
 
 
 class CartOrderAdmin(admin.ModelAdmin):
-    list_display = ["oid", "payment_status", "total"]
-    list_editable = ["payment_status"]
+    list_display = ["oid", "buyer", "date"]
+    list_filter = ["date"]
+    search_fields = ["oid"]
 
 
 admin.site.register(Category)

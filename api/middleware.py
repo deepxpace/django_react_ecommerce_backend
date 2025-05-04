@@ -4,6 +4,8 @@ import re
 import logging
 import os
 import mimetypes
+import requests
+from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +22,31 @@ class CloudinaryMediaRedirectMiddleware:
         
         # First try environment variables, then settings
         self.cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        self.api_key = os.environ.get('CLOUDINARY_API_KEY') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_KEY')
+        self.api_secret = os.environ.get('CLOUDINARY_API_SECRET') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_SECRET')
         
         # Log what we're using for debugging
         logger.info(f"Cloudinary middleware initialized with cloud_name: {self.cloud_name}")
         
-        self.is_cloudinary = 'cloudinary' in getattr(settings, 'DEFAULT_FILE_STORAGE', '') and self.cloud_name
+        # Check if all required credentials are available
+        self.is_cloudinary = all([
+            'cloudinary' in getattr(settings, 'DEFAULT_FILE_STORAGE', ''),
+            self.cloud_name,
+            self.api_key,
+            self.api_secret
+        ])
+        
+        if not self.is_cloudinary:
+            logger.warning("Cloudinary configuration incomplete - some credentials missing")
+            missing = []
+            if not self.cloud_name:
+                missing.append("CLOUD_NAME")
+            if not self.api_key:
+                missing.append("API_KEY")
+            if not self.api_secret:
+                missing.append("API_SECRET")
+            if missing:
+                logger.warning(f"Missing Cloudinary credentials: {', '.join(missing)}")
         
         # Keep track of media root
         self.media_root = settings.MEDIA_ROOT
@@ -40,20 +62,51 @@ class CloudinaryMediaRedirectMiddleware:
             
             # Try Cloudinary redirection if configured
             if self.is_cloudinary:
-                cloudinary_url = f"https://res.cloudinary.com/{self.cloud_name}/image/upload/{file_path}"
-                logger.info(f"Redirecting {path} to Cloudinary: {cloudinary_url}")
+                cloudinary_path = file_path
+                
+                # Handle product images with or without the 'products/' prefix
+                if not cloudinary_path.startswith('products/') and 'product' in request.path.lower():
+                    cloudinary_path = f"products/{cloudinary_path}"
+                
+                cloudinary_url = f"https://res.cloudinary.com/{self.cloud_name}/image/upload/{cloudinary_path}"
+                logger.info(f"Trying Cloudinary URL: {cloudinary_url}")
                 
                 try:
                     # Check if the file exists on Cloudinary
-                    import requests
-                    head_response = requests.head(cloudinary_url, timeout=2)
+                    head_response = requests.head(cloudinary_url, timeout=5)
                     
                     if head_response.status_code == 200:
                         return HttpResponseRedirect(cloudinary_url)
                     else:
-                        logger.warning(f"File not found on Cloudinary: {cloudinary_url}")
-                except Exception as e:
+                        logger.warning(f"File not found on Cloudinary: {cloudinary_url} (Status: {head_response.status_code})")
+                        
+                        # Try alternative paths for Cloudinary
+                        alt_paths = []
+                        
+                        # Try with/without products/ prefix
+                        if cloudinary_path.startswith('products/'):
+                            alt_paths.append(cloudinary_path[9:])  # Remove 'products/'
+                        else:
+                            alt_paths.append(f"products/{cloudinary_path}")
+                            
+                        # Try without any file extension
+                        base_path = cloudinary_path.rsplit('.', 1)[0] if '.' in cloudinary_path else cloudinary_path
+                        alt_paths.append(base_path)
+                        
+                        # Try alternative paths
+                        for alt_path in alt_paths:
+                            alt_url = f"https://res.cloudinary.com/{self.cloud_name}/image/upload/{alt_path}"
+                            try:
+                                alt_response = requests.head(alt_url, timeout=3)
+                                if alt_response.status_code == 200:
+                                    logger.info(f"Found at alternative Cloudinary path: {alt_url}")
+                                    return HttpResponseRedirect(alt_url)
+                            except RequestException as e:
+                                logger.warning(f"Error checking alternative Cloudinary path {alt_url}: {str(e)}")
+                except RequestException as e:
                     logger.warning(f"Error checking Cloudinary: {str(e)}")
+            else:
+                logger.warning(f"Cloudinary not properly configured - falling back to local storage")
             
             # If we get here, try serving from local media as fallback
             try:
@@ -83,4 +136,4 @@ class CloudinaryMediaRedirectMiddleware:
         
         # Continue with normal request processing
         response = self.get_response(request)
-        return response  # Updated middleware with improved image handling
+        return response

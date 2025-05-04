@@ -51,12 +51,13 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 # Create your views here.
 
 
-def send_notification(user=None, vendor=None, order=None, order_item=None):
+def send_notification(user=None, vendor=None, order=None, order_item=None, type="system"):
     Notification.objects.create(
         user=user,
         vendor=vendor,
         order=order,
         order_item=order_item,
+        type=type
     )
 
 
@@ -211,9 +212,12 @@ class CartListView(generics.ListAPIView):
         cart_id = self.kwargs["cart_id"]
         user_id = self.kwargs.get("user_id")
 
-        if user_id is not None:
-            user = User.objects.get(id=user_id)
-            queryset = Cart.objects.filter(user=user, cart_id=cart_id)
+        if user_id is not None and user_id not in ('null', 'undefined'):
+            try:
+                user = User.objects.get(id=user_id)
+                queryset = Cart.objects.filter(user=user, cart_id=cart_id)
+            except (User.DoesNotExist, ValueError):
+                queryset = Cart.objects.filter(cart_id=cart_id)
         else:
             queryset = Cart.objects.filter(cart_id=cart_id)
 
@@ -231,9 +235,12 @@ class CartDetailView(generics.RetrieveAPIView):
         cart_id = self.kwargs["cart_id"]
         user_id = self.kwargs.get("user_id")
 
-        if user_id is not None:
-            user = User.objects.get(id=user_id)
-            queryset = Cart.objects.filter(user=user, cart_id=cart_id)
+        if user_id is not None and user_id not in ('null', 'undefined'):
+            try:
+                user = User.objects.get(id=user_id)
+                queryset = Cart.objects.filter(user=user, cart_id=cart_id)
+            except (User.DoesNotExist, ValueError):
+                queryset = Cart.objects.filter(cart_id=cart_id)
         else:
             queryset = Cart.objects.filter(cart_id=cart_id)
 
@@ -290,9 +297,12 @@ class CartItemDeleteAPIView(generics.DestroyAPIView):
         item_id = self.kwargs["item_id"]
         user_id = self.kwargs.get("user_id")
 
-        if user_id:
-            user = User.objects.get(id=user_id)
-            cart = Cart.objects.get(id=item_id, cart_id=cart_id, user=user)
+        if user_id and user_id not in ('null', 'undefined'):
+            try:
+                user = User.objects.get(id=user_id)
+                cart = Cart.objects.get(id=item_id, cart_id=cart_id, user=user)
+            except (User.DoesNotExist, ValueError):
+                cart = Cart.objects.get(id=item_id, cart_id=cart_id)
         else:
             cart = Cart.objects.get(id=item_id, cart_id=cart_id)
 
@@ -322,7 +332,8 @@ class CreateOrderAPIView(generics.CreateAPIView):
                     notification = Notification.objects.create(
                         user=admin,
                         order=order,
-                        seen=False
+                        seen=False,
+                        type="admin"
                     )
                     notification.save()
                     print(f"Created database notification for admin: {admin.email}")
@@ -713,7 +724,8 @@ class PaymentSuccessView(generics.CreateAPIView):
             notification = Notification.objects.create(
                 vendor=vendor,
                 order=order,
-                seen=False
+                seen=False,
+                type="vendor"
             )
             notification.save()
             
@@ -782,7 +794,8 @@ class PaymentSuccessView(generics.CreateAPIView):
                     notification = Notification.objects.create(
                         user=admin,
                         order=order,
-                        seen=False
+                        seen=False,
+                        type="admin"
                     )
                     notification.save()
                     print(f"Created database notification for admin: {admin.email}")
@@ -1296,7 +1309,8 @@ class CashOnDeliveryAPIView(generics.CreateAPIView):
             notification = Notification.objects.create(
                 vendor=vendor,
                 order=order,
-                seen=False
+                seen=False,
+                type="vendor"
             )
             notification.save()
             
@@ -1332,7 +1346,8 @@ class CashOnDeliveryAPIView(generics.CreateAPIView):
                     notification = Notification.objects.create(
                         user=admin,
                         order=order,
-                        seen=False
+                        seen=False,
+                        type="admin"
                     )
                     notification.save()
                     print(f"Created database notification for admin: {admin.email}")

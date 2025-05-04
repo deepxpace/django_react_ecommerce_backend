@@ -89,9 +89,22 @@ class WishlistAPIVIew(generics.ListCreateAPIView):
   def get_queryset(self):
     user_id = self.kwargs['user_id']
     
-    user = User.objects.get(id=user_id)
-    wishlists = Wishlist.objects.filter(user=user)
+    # Handle case where user_id is undefined, null or invalid
+    if user_id in ['undefined', 'null'] or not user_id:
+      if self.request.user.is_authenticated:
+        # Use the authenticated user instead
+        user = self.request.user
+      else:
+        # Return empty queryset if no valid user
+        return Wishlist.objects.none()
+    else:
+      try:
+        user = User.objects.get(id=user_id)
+      except (User.DoesNotExist, ValueError):
+        # Return empty queryset if user doesn't exist or ID is invalid
+        return Wishlist.objects.none()
     
+    wishlists = Wishlist.objects.filter(user=user)
     return wishlists
   
   def create(self, request, *args, **kwargs):
@@ -100,17 +113,25 @@ class WishlistAPIVIew(generics.ListCreateAPIView):
     product_id = payload['product_id']
     user_id = payload['user_id']
     
-    product = Product.objects.get(id=product_id)
-    user = User.objects.get(id=user_id)
+    if user_id in ['undefined', 'null'] or not user_id:
+      return Response({'error': 'Please log in to add items to your wishlist'}, status=status.HTTP_400_BAD_REQUEST)
     
-    wishlist = Wishlist.objects.filter(product=product, user=user)
-    
-    if wishlist:
-      wishlist.delete()
-      return Response({'message': 'Removed from wishlist'}, status=status.HTTP_200_OK)
-    else:
-      Wishlist.objects.create(product=product, user=user)
-      return Response({'message': 'Added to wishlist'}, status=status.HTTP_201_CREATED)
+    try:
+      product = Product.objects.get(id=product_id)
+      user = User.objects.get(id=user_id)
+      
+      wishlist = Wishlist.objects.filter(product=product, user=user)
+      
+      if wishlist:
+        wishlist.delete()
+        return Response({'message': 'Removed from wishlist'}, status=status.HTTP_200_OK)
+      else:
+        Wishlist.objects.create(product=product, user=user)
+        return Response({'message': 'Added to wishlist'}, status=status.HTTP_201_CREATED)
+    except (User.DoesNotExist, ValueError):
+      return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Product.DoesNotExist:
+      return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
     
 class CustomerNotification(generics.ListAPIView):
   serializer_class = NotificationSerializer
@@ -119,7 +140,20 @@ class CustomerNotification(generics.ListAPIView):
   def get_queryset(self):
     user_id = self.kwargs['user_id']
     
-    user = User.objects.get(id=user_id)
+    # Handle case where user_id is undefined, null or invalid
+    if user_id in ['undefined', 'null'] or not user_id:
+      if self.request.user.is_authenticated:
+        # Use the authenticated user instead
+        user = self.request.user
+      else:
+        # Return empty queryset if no valid user
+        return Notification.objects.none()
+    else:
+      try:
+        user = User.objects.get(id=user_id)
+      except (User.DoesNotExist, ValueError):
+        # Return empty queryset if user doesn't exist or ID is invalid
+        return Notification.objects.none()
     
     return Notification.objects.filter(user=user, seen=False)
   
@@ -131,11 +165,30 @@ class MarkCustomerNotificationAsSeen(generics.RetrieveAPIView):
     user_id = self.kwargs['user_id']
     noti_id = self.kwargs['noti_id']
     
-    user = User.objects.get(id=user_id)
-    noti = Notification.objects.get(id=noti_id, user=user)
+    # Handle case where user_id is undefined, null or invalid
+    if user_id in ['undefined', 'null'] or not user_id:
+      if self.request.user.is_authenticated:
+        # Use the authenticated user instead
+        user = self.request.user
+      else:
+        # Return 404 if no valid user
+        from django.http import Http404
+        raise Http404("User not found - please log in")
+    else:
+      try:
+        user = User.objects.get(id=user_id)
+      except (User.DoesNotExist, ValueError):
+        from django.http import Http404
+        raise Http404("User not found")
     
-    if noti.seen != True:
-      noti.seen = True
-      noti.save()    
-  
-    return noti
+    try:
+      noti = Notification.objects.get(id=noti_id, user=user)
+      
+      if noti.seen != True:
+        noti.seen = True
+        noti.save()    
+    
+      return noti
+    except Notification.DoesNotExist:
+      from django.http import Http404
+      raise Http404("Notification not found")

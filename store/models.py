@@ -90,8 +90,15 @@ class Product(models.Model):
 
     def save(self, *args, **kwargs):
         if self.slug == "" or self.slug == None:
-            self.slug = slugify(self.title)
-
+            # Ensure slug is not too long by limiting title to 40 chars before slugify
+            title_for_slug = self.title[:40] if self.title else ""
+            self.slug = slugify(title_for_slug)
+        
+        # Ensure status is within the valid choices
+        valid_statuses = [status[0] for status in self.STATUS]
+        if self.status not in valid_statuses:
+            self.status = "published"  # Default to published if invalid
+        
         super(Product, self).save(*args, **kwargs)
 
 

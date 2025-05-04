@@ -193,8 +193,8 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         user_id = self.kwargs["user_id"]
         
-        # Handle undefined or invalid user_id
-        if user_id == 'undefined' or not user_id:
+        # Handle undefined, null or invalid user_id
+        if user_id in ('undefined', 'null') or not user_id:
             if self.request.user.is_authenticated:
                 # Use authenticated user instead
                 user = self.request.user
