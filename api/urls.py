@@ -14,6 +14,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 urlpatterns = [
+    # Root URL - API information
+    path('', views.api_root, name='api_root'),
+    
     # Version 1 API endpoints
     path('v1/', include([
         # USER ENDPOINTS

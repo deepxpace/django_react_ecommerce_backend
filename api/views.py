@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 import requests
 from django.http import HttpResponse, Http404, JsonResponse
 from django.conf import settings
@@ -11,6 +11,31 @@ import logging
 mimetypes.add_type('image/avif', '.avif')
 
 # Create your views here.
+
+def api_root(request):
+    """
+    Root view to provide API information or redirect to admin panel.
+    """
+    # If user is authenticated and is staff, redirect to admin
+    if request.user.is_authenticated and request.user.is_staff:
+        return redirect('/admin/')
+    
+    # Otherwise, return API information
+    api_info = {
+        "name": "Koshimart API",
+        "version": "1.0",
+        "description": "Backend API for Koshimart e-commerce platform",
+        "endpoints": {
+            "api": "/api/v1/",
+            "products": "/api/v1/products/",
+            "categories": "/api/v1/category/",
+            "admin": "/admin/",
+            "media_proxy": "/media-proxy/{path}",
+        },
+        "documentation": "Contact the administrator for API documentation"
+    }
+    
+    return JsonResponse(api_info)
 
 def proxy_s3_media(request, path):
     """
