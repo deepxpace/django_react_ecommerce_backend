@@ -473,101 +473,122 @@ def test_image(request, format):
     import logging
     logger = logging.getLogger(__name__)
     
-    # Default image size
-    width = int(request.GET.get('width', 300))
-    height = int(request.GET.get('height', 200))
+    # Validate format
+    format = format.lower()
+    if format not in ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif']:
+        format = 'png'  # Default to PNG
     
-    # Validate dimensions
-    if width > 1000 or height > 1000:
-        width, height = 300, 200  # Reset to defaults if too large
+    # Map formats to content types
+    content_types = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'webp': 'image/webp',
+        'avif': 'image/avif',
+        'gif': 'image/gif'
+    }
     
+    # Use a tiny 1x1 placeholder image for each format
     try:
-        # Generate a simple test image using Pillow
-        from PIL import Image, ImageDraw, ImageFont
-        import io
-        
-        # Use a normalized format
-        format = format.lower()
-        if format not in ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif']:
-            format = 'png'  # Default to PNG
-        
-        # Normalize format for PIL
-        pil_format = format.upper()
-        if pil_format == 'JPG':
-            pil_format = 'JPEG'
-        elif pil_format == 'AVIF':
-            # AVIF not directly supported in older PIL versions, use PNG instead
-            pil_format = 'PNG'
-        
-        # Create a new image with a gradient background
-        image = Image.new('RGB', (width, height), color=(240, 240, 240))
-        draw = ImageDraw.Draw(image)
-        
-        # Draw a border
-        draw.rectangle(
-            [(0, 0), (width-1, height-1)],
-            outline=(200, 200, 200)
-        )
-        
-        # Draw diagonal lines for visual interest
-        for i in range(0, width+height, 20):
-            draw.line([(0, i), (i, 0)], fill=(220, 220, 220), width=2)
-            
-        # Add text
-        try:
-            # Try to use a default font
-            font = ImageFont.truetype("Arial", 20)
-        except IOError:
-            # Fallback to default font
-            font = ImageFont.load_default()
-            
-        # Write format and dimensions
-        text = f"Test {format.upper()} {width}x{height}"
-        text_width = draw.textlength(text, font=font)
-        draw.text(
-            ((width-text_width)/2, height/2-10),
-            text,
-            fill=(80, 80, 80),
-            font=font
-        )
-        
-        # Draw server info
-        server_text = "Koshimart API"
-        server_width = draw.textlength(server_text, font=font)
-        draw.text(
-            ((width-server_width)/2, height/2+20),
-            server_text,
-            fill=(100, 100, 100),
-            font=font
-        )
-        
-        # Save to buffer
-        buffer = io.BytesIO()
-        if pil_format == 'AVIF':
-            # If AVIF requested but not supported, use WebP as fallback
-            image.save(buffer, format='WEBP', quality=90)
-            content_type = 'image/webp'
+        # Use pre-generated tiny images
+        if format in ['jpg', 'jpeg']:
+            # 1x1 JPEG (red)
+            image_data = (
+                b'\xff\xd8\xff\xe0\x00\x10\x4a\x46\x49\x46\x00\x01\x01\x01\x00\x48'
+                b'\x00\x48\x00\x00\xff\xdb\x00\x43\x00\x08\x06\x06\x07\x06\x05\x08'
+                b'\x07\x07\x07\x09\x09\x08\x0a\x0c\x14\x0d\x0c\x0b\x0b\x0c\x19\x12'
+                b'\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c\x20\x24\x2e\x27\x20'
+                b'\x22\x2c\x23\x1c\x1c\x28\x37\x29\x2c\x30\x31\x34\x34\x34\x1f\x27'
+                b'\x39\x3d\x38\x32\x3c\x2e\x33\x34\x32\xff\xdb\x00\x43\x01\x09\x09'
+                b'\x09\x0c\x0b\x0c\x18\x0d\x0d\x18\x32\x21\x1c\x21\x32\x32\x32\x32'
+                b'\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32'
+                b'\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32'
+                b'\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\x32\xff\xc0\x00\x11'
+                b'\x08\x00\x01\x00\x01\x03\x01\x22\x00\x02\x11\x01\x03\x11\x01\xff'
+                b'\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00'
+                b'\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b'
+                b'\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04'
+                b'\x04\x00\x00\x01\x7d\x01\x02\x03\x00\x04\x11\x05\x12\x21\x31\x41'
+                b'\x06\x13\x51\x61\x07\x22\x71\x14\x32\x81\x91\xa1\x08\x23\x42\xb1'
+                b'\xc1\x15\x52\xd1\xf0\x24\x33\x62\x72\x82\x09\x0a\x16\x17\x18\x19'
+                b'\x1a\x25\x26\x27\x28\x29\x2a\x34\x35\x36\x37\x38\x39\x3a\x43\x44'
+                b'\x45\x46\x47\x48\x49\x4a\x53\x54\x55\x56\x57\x58\x59\x5a\x63\x64'
+                b'\x65\x66\x67\x68\x69\x6a\x73\x74\x75\x76\x77\x78\x79\x7a\x83\x84'
+                b'\x85\x86\x87\x88\x89\x8a\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2'
+                b'\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9'
+                b'\xba\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7'
+                b'\xd8\xd9\xda\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xf1\xf2\xf3'
+                b'\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff\xc4\x00\x1f\x01\x00\x03\x01\x01'
+                b'\x01\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x01\x02\x03'
+                b'\x04\x05\x06\x07\x08\x09\x0a\x0b\xff\xc4\x00\xb5\x11\x00\x02\x01'
+                b'\x02\x04\x04\x03\x04\x07\x05\x04\x04\x00\x01\x02\x77\x00\x01\x02'
+                b'\x03\x11\x04\x05\x21\x31\x06\x12\x41\x51\x07\x61\x71\x13\x22\x32'
+                b'\x81\x08\x14\x42\x91\xa1\xb1\xc1\x09\x23\x33\x52\xf0\x15\x62\x72'
+                b'\xd1\x0a\x16\x24\x34\xe1\x25\xf1\x17\x18\x19\x1a\x26\x27\x28\x29'
+                b'\x2a\x35\x36\x37\x38\x39\x3a\x43\x44\x45\x46\x47\x48\x49\x4a\x53'
+                b'\x54\x55\x56\x57\x58\x59\x5a\x63\x64\x65\x66\x67\x68\x69\x6a\x73'
+                b'\x74\x75\x76\x77\x78\x79\x7a\x82\x83\x84\x85\x86\x87\x88\x89\x8a'
+                b'\x92\x93\x94\x95\x96\x97\x98\x99\x9a\xa2\xa3\xa4\xa5\xa6\xa7\xa8'
+                b'\xa9\xaa\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xc2\xc3\xc4\xc5\xc6'
+                b'\xc7\xc8\xc9\xca\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xe2\xe3\xe4'
+                b'\xe5\xe6\xe7\xe8\xe9\xea\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xff'
+                b'\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00\x3f\x00\xfe\xfe\x28'
+                b'\xa2\x8a\x00\xff\xd9'
+            )
+        elif format == 'png':
+            # 1x1 PNG (blue)
+            image_data = (
+                b'\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52'
+                b'\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90\x77\x53'
+                b'\xde\x00\x00\x00\x09\x70\x48\x59\x73\x00\x00\x0b\x13\x00\x00\x0b'
+                b'\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\x07\x74\x49\x4d\x45\x07\xe0'
+                b'\x0a\x1f\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0c\x49\x44\x41'
+                b'\x54\x08\xd7\x63\x60\x00\x00\x00\x02\x00\x01\xe2\x21\xbc\x33\x00'
+                b'\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82'
+            )
+        elif format == 'webp':
+            # 1x1 WebP (green)
+            image_data = (
+                b'\x52\x49\x46\x46\x24\x00\x00\x00\x57\x45\x42\x50\x56\x50\x38\x20'
+                b'\x18\x00\x00\x00\x30\x01\x00\x9d\x01\x2a\x01\x00\x01\x00\x02\x00'
+                b'\x34\x25\xa4\x00\x03\x70\x00\xfe\xfb\xfd\x50\x00\x00'
+            )
+        elif format == 'avif':
+            # Since AVIF is complex, use this placeholder and set content type
+            # 1x1 PNG (just reuse the PNG but set AVIF content type)
+            image_data = (
+                b'\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52'
+                b'\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90\x77\x53'
+                b'\xde\x00\x00\x00\x09\x70\x48\x59\x73\x00\x00\x0b\x13\x00\x00\x0b'
+                b'\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\x07\x74\x49\x4d\x45\x07\xe0'
+                b'\x0a\x1f\x0c\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0c\x49\x44\x41'
+                b'\x54\x08\xd7\x63\x60\x00\x00\x00\x02\x00\x01\xe2\x21\xbc\x33\x00'
+                b'\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82'
+            )
+        elif format == 'gif':
+            # 1x1 GIF (transparent)
+            image_data = (
+                b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff'
+                b'\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00'
+                b'\x01\x00\x01\x00\x00\x02\x01\x44\x00\x3b'
+            )
         else:
-            # Select quality based on format
-            quality = 90
-            if pil_format in ['JPEG', 'WEBP']:
-                image.save(buffer, format=pil_format, quality=quality)
-            else:
-                image.save(buffer, format=pil_format)
-                
-            content_type = f'image/{format.lower()}'
-            if format.lower() == 'jpg':
-                content_type = 'image/jpeg'
-        
-        buffer.seek(0)
+            # Fallback to transparent GIF
+            image_data = (
+                b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff'
+                b'\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00'
+                b'\x01\x00\x01\x00\x00\x02\x01\x44\x00\x3b'
+            )
+            format = 'gif'
         
         # Return the image
-        response = HttpResponse(buffer.getvalue(), content_type=content_type)
+        content_type = content_types.get(format, 'image/png')
+        response = HttpResponse(image_data, content_type=content_type)
         response['Cache-Control'] = 'max-age=3600'  # Cache for 1 hour
         
-        logger.info(f"Generated test image: {format} {width}x{height}")
+        logger.info(f"Served test image: {format} (1x1 pixel)")
         return response
-    
+        
     except Exception as e:
         logger.error(f"Error generating test image: {str(e)}")
         # Return a fallback image on error
