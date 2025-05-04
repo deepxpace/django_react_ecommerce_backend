@@ -19,14 +19,13 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
-from django.http import HttpResponseRedirect
 
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
 from store.views import CartDeleteAPIView
-from api.views import proxy_s3_media, debug_image_paths, api_root, debug_cloudinary, test_image
+from api.views import proxy_s3_media, debug_image_paths, api_root, debug_cloudinary, test_image, media_proxy
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -56,7 +55,7 @@ urlpatterns = [
     path('test-image/<str:format>/', test_image, name='test_image'),
     
     # Redirect from media paths directly to the proxy
-    path('media/<path:path>', lambda request, path: HttpResponseRedirect(f'/media-proxy/{path}')),
+    path('media/<path:path>', media_proxy, name='media_direct'),
     
     # API Documentation
     path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),

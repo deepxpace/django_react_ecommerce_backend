@@ -159,5 +159,5 @@ urlpatterns = [
     path('test-image/<str:format>/', views.test_image, name='test_image'),
     
     # Redirect from media paths directly to the proxy
-    path('media/<path:path>', lambda request, path: HttpResponseRedirect(f'/media-proxy/{path}')),
+    path('media/<path:path>', views.media_proxy, name='media_direct'),
 ]

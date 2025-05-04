@@ -39,7 +39,8 @@ def media_proxy(request, path):
     """
     Media proxy view to forward requests to Cloudinary
     
-    This is a backup for the middleware redirect in case it fails
+    This method directly serves the image content rather than redirecting
+    to prevent redirect loops
     """
     logger.info(f"Media proxy request for: {path}")
     
@@ -53,7 +54,7 @@ def media_proxy(request, path):
         # If it's not explicitly in the products folder but likely is a product
         cloudinary_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/products/{path}"
     
-    logger.info(f"Redirecting to Cloudinary via proxy: {cloudinary_url}")
+    logger.info(f"Fetching image from Cloudinary: {cloudinary_url}")
     
     try:
         # Forward the request to Cloudinary
@@ -63,27 +64,65 @@ def media_proxy(request, path):
             # Set content type from response
             content_type = cloudinary_response.headers.get('Content-Type', 'application/octet-stream')
             
-            # Create redirect response
-            return HttpResponseRedirect(cloudinary_url)
+            # Create direct response with the image content
+            response = HttpResponse(
+                cloudinary_response.content,
+                content_type=content_type
+            )
+            # Cache for 24 hours
+            response['Cache-Control'] = 'max-age=86400, public'
+            return response
         else:
             # Try direct file from local media
             local_path = os.path.join(settings.MEDIA_ROOT, path)
             if os.path.exists(local_path) and os.path.isfile(local_path):
                 logger.info(f"Serving file from local media (fallback): {local_path}")
-                return HttpResponseRedirect(f"{request.scheme}://{request.get_host()}/media/{path}")
+                with open(local_path, 'rb') as f:
+                    content = f.read()
+                    
+                # Determine content type
+                content_type, _ = mimetypes.guess_type(local_path)
+                response = HttpResponse(
+                    content,
+                    content_type=content_type or 'application/octet-stream'
+                )
+                response['Cache-Control'] = 'max-age=86400, public'
+                return response
             
             # If not found, try with products/ prefix
             if not path.startswith('products/'):
                 alt_cloudinary_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/products/{path}" 
-                return HttpResponseRedirect(alt_cloudinary_url)
+                alt_response = requests.get(alt_cloudinary_url, stream=True, timeout=5)
+                
+                if alt_response.status_code == 200:
+                    content_type = alt_response.headers.get('Content-Type', 'application/octet-stream')
+                    response = HttpResponse(
+                        alt_response.content,
+                        content_type=content_type
+                    )
+                    response['Cache-Control'] = 'max-age=86400, public'
+                    return response
             
-            # If still not found, return 404
+            # If still not found, return a placeholder image
             logger.warning(f"Media file not found: {path}")
-            return JsonResponse({'error': 'File not found'}, status=404)
+            placeholder_svg = (
+                b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">'
+                b'<rect width="200" height="200" fill="#f0f0f0"/>'
+                b'<text x="50%" y="50%" font-family="Arial" font-size="14" text-anchor="middle" fill="#999">Image Not Found</text>'
+                b'</svg>'
+            )
+            return HttpResponse(placeholder_svg, content_type='image/svg+xml')
             
     except Exception as e:
         logger.error(f"Error in media proxy: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=500)
+        # Return a placeholder image on error
+        placeholder_svg = (
+            b'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">'
+            b'<rect width="200" height="200" fill="#f0f0f0"/>'
+            b'<text x="50%" y="50%" font-family="Arial" font-size="14" text-anchor="middle" fill="#999">Error Loading Image</text>'
+            b'</svg>'
+        )
+        return HttpResponse(placeholder_svg, content_type='image/svg+xml')
 
 def proxy_s3_media(request, path):
     """
