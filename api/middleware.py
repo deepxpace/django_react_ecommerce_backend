@@ -83,4 +83,4 @@ class CloudinaryMediaRedirectMiddleware:
         
         # Continue with normal request processing
         response = self.get_response(request)
-        return response 
+        return response // Test update Sun May  4 04:54:13 CEST 2025
