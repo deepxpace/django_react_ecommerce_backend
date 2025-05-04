@@ -5,6 +5,7 @@ from django.conf import settings
 import mimetypes
 import os
 import datetime
+import logging
 
 # Register AVIF MIME type to ensure proper content type detection
 mimetypes.add_type('image/avif', '.avif')
@@ -17,7 +18,6 @@ def proxy_s3_media(request, path):
     This fetches and serves files from S3 through the Django backend.
     """
     # Import logging for troubleshooting
-    import logging
     logger = logging.getLogger(__name__)
     
     if not path:
@@ -187,9 +187,6 @@ def proxy_s3_media(request, path):
     
     # Try Django's local media folder as a last resort
     try:
-        from django.conf import settings
-        import os
-        
         # Check if the file exists in the media directory
         media_root = settings.MEDIA_ROOT
         logger.info(f"Checking local media folder: {media_root}")
