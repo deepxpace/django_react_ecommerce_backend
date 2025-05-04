@@ -28,9 +28,9 @@ INSTALLED_APPS += [
 
 # Cloudinary Configuration
 CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'Deepsimage'),
-    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '855942689195483'),
-    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'pRzA_eY3dPJeiFiQn88LUa1gGA4'),
+    'CLOUD_NAME': 'deepsimage',
+    'API_KEY': '855942689195483',
+    'API_SECRET': 'pRzA_eY3dPJeiFiQn88LUa1gGA4',
 }
 
 # Use Cloudinary for media storage
