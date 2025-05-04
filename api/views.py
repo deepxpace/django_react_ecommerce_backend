@@ -464,3 +464,116 @@ def debug_image_paths(request):
         result['error'] = str(e)
         result['traceback'] = traceback.format_exc()
         return JsonResponse(result)
+
+def test_image(request, format):
+    """
+    Generate a test image in the requested format.
+    This is useful for testing the media serving infrastructure.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Default image size
+    width = int(request.GET.get('width', 300))
+    height = int(request.GET.get('height', 200))
+    
+    # Validate dimensions
+    if width > 1000 or height > 1000:
+        width, height = 300, 200  # Reset to defaults if too large
+    
+    try:
+        # Generate a simple test image using Pillow
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+        
+        # Use a normalized format
+        format = format.lower()
+        if format not in ['jpg', 'jpeg', 'png', 'webp', 'avif', 'gif']:
+            format = 'png'  # Default to PNG
+        
+        # Normalize format for PIL
+        pil_format = format.upper()
+        if pil_format == 'JPG':
+            pil_format = 'JPEG'
+        elif pil_format == 'AVIF':
+            # AVIF not directly supported in older PIL versions, use PNG instead
+            pil_format = 'PNG'
+        
+        # Create a new image with a gradient background
+        image = Image.new('RGB', (width, height), color=(240, 240, 240))
+        draw = ImageDraw.Draw(image)
+        
+        # Draw a border
+        draw.rectangle(
+            [(0, 0), (width-1, height-1)],
+            outline=(200, 200, 200)
+        )
+        
+        # Draw diagonal lines for visual interest
+        for i in range(0, width+height, 20):
+            draw.line([(0, i), (i, 0)], fill=(220, 220, 220), width=2)
+            
+        # Add text
+        try:
+            # Try to use a default font
+            font = ImageFont.truetype("Arial", 20)
+        except IOError:
+            # Fallback to default font
+            font = ImageFont.load_default()
+            
+        # Write format and dimensions
+        text = f"Test {format.upper()} {width}x{height}"
+        text_width = draw.textlength(text, font=font)
+        draw.text(
+            ((width-text_width)/2, height/2-10),
+            text,
+            fill=(80, 80, 80),
+            font=font
+        )
+        
+        # Draw server info
+        server_text = "Koshimart API"
+        server_width = draw.textlength(server_text, font=font)
+        draw.text(
+            ((width-server_width)/2, height/2+20),
+            server_text,
+            fill=(100, 100, 100),
+            font=font
+        )
+        
+        # Save to buffer
+        buffer = io.BytesIO()
+        if pil_format == 'AVIF':
+            # If AVIF requested but not supported, use WebP as fallback
+            image.save(buffer, format='WEBP', quality=90)
+            content_type = 'image/webp'
+        else:
+            # Select quality based on format
+            quality = 90
+            if pil_format in ['JPEG', 'WEBP']:
+                image.save(buffer, format=pil_format, quality=quality)
+            else:
+                image.save(buffer, format=pil_format)
+                
+            content_type = f'image/{format.lower()}'
+            if format.lower() == 'jpg':
+                content_type = 'image/jpeg'
+        
+        buffer.seek(0)
+        
+        # Return the image
+        response = HttpResponse(buffer.getvalue(), content_type=content_type)
+        response['Cache-Control'] = 'max-age=3600'  # Cache for 1 hour
+        
+        logger.info(f"Generated test image: {format} {width}x{height}")
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error generating test image: {str(e)}")
+        # Return a fallback image on error
+        transparent_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff'
+            b'\x00\x00\x00\x21\xf9\x04\x01\x00\x00\x00\x00\x2c\x00\x00\x00\x00'
+            b'\x01\x00\x01\x00\x00\x02\x01\x44\x00\x3b'
+        )
+        return HttpResponse(transparent_gif, content_type='image/gif')

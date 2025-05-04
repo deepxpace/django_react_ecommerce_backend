@@ -29,25 +29,39 @@ from api.views import proxy_s3_media, debug_image_paths
 
 schema_view = get_schema_view(
     openapi.Info(
-        title='Django Ecommerce Backend APIs',
+        title="Kosimart API",
         default_version='v1',
-        description='Official backend APIs documentation for Django Ecommerce web applications',
-        contact=openapi.Contact(email='riorajaa2018@gmail.com'),
-        license=openapi.License(name='BSD License')    
+        description="API Documentation for Kosimart E-commerce",
+        terms_of_service="https://www.kosimart.com/terms/",
+        contact=openapi.Contact(email="contact@kosimart.com"),
+        license=openapi.License(name="BSD License"),
     ),
     public=True,
-    permission_classes=(permissions.AllowAny,)
+    permission_classes=(permissions.AllowAny,),
 )
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/v1/', include('api.urls')),
     
-    path('', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('api/', include('api.urls')),
+    
+    # Direct media access - will be handled by CloudinaryMediaRedirectMiddleware
+    path('media/<path:path>', include('api.urls')),
+    
+    # Include media-proxy path at root level for compatibility
+    path('media-proxy/<path:path>', include('api.urls')),
+    
+    # API Documentation
+    path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    
 ]
 
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+# Debug-only settings
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 urlpatterns += [
     path('accounts/login/', auth_views.LoginView.as_view(), name='login'),
