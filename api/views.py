@@ -4,6 +4,7 @@ from django.http import HttpResponse, Http404, JsonResponse
 from django.conf import settings
 import mimetypes
 import os
+import datetime
 
 # Register AVIF MIME type to ensure proper content type detection
 mimetypes.add_type('image/avif', '.avif')
@@ -618,3 +619,125 @@ def test_image(request, format):
             b'\x01\x00\x01\x00\x00\x02\x01\x44\x00\x3b'
         )
         return HttpResponse(transparent_gif, content_type='image/gif')
+
+def debug_cloudinary(request):
+    """
+    Debug view to check Cloudinary configuration
+    """
+    import os
+    import logging
+    import sys
+    import json
+    from django.conf import settings
+    import cloudinary
+    import cloudinary.api
+    
+    logger = logging.getLogger(__name__)
+    
+    result = {
+        'env_vars': {
+            'CLOUDINARY_CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'CLOUDINARY_API_KEY': os.environ.get('CLOUDINARY_API_KEY', '')[:5] + '...' if os.environ.get('CLOUDINARY_API_KEY') else None,
+            'CLOUDINARY_API_SECRET': '***REDACTED***' if os.environ.get('CLOUDINARY_API_SECRET') else None,
+        },
+        'settings': {
+            'CLOUD_NAME': getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME'),
+            'API_KEY': getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_KEY', '')[:5] + '...' if getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_KEY') else None,
+            'API_SECRET': '***REDACTED***' if getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_SECRET') else None,
+            'DEFAULT_FILE_STORAGE': getattr(settings, 'DEFAULT_FILE_STORAGE', None),
+        },
+        'test_results': []
+    }
+    
+    # Try to upload a test image to verify access
+    try:
+        # Get credentials in order of precedence
+        cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        api_key = os.environ.get('CLOUDINARY_API_KEY') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_KEY')
+        api_secret = os.environ.get('CLOUDINARY_API_SECRET') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_SECRET')
+        
+        logger.info(f"Configuring Cloudinary with name: {cloud_name}")
+        
+        # Configure the SDK
+        cloudinary.config(
+            cloud_name=cloud_name,
+            api_key=api_key,
+            api_secret=api_secret
+        )
+        
+        # Get account info
+        result['test_results'].append({
+            'test': 'Get account info',
+            'time': str(datetime.datetime.now()),
+            'status': 'Running...'
+        })
+        
+        account_info = cloudinary.api.account_info()
+        
+        result['account_info'] = {
+            'cloud_name': account_info.get('cloud_name'),
+            'plan': account_info.get('plan'),
+            'usage': {
+                'credits': account_info.get('credits', {}).get('usage'),
+                'limit': account_info.get('credits', {}).get('limit')
+            }
+        }
+        
+        result['test_results'][-1]['status'] = 'Success'
+        
+        # Check if we can get the resources
+        result['test_results'].append({
+            'test': 'List resources',
+            'time': str(datetime.datetime.now()),
+            'status': 'Running...'
+        })
+        
+        resources = cloudinary.api.resources(max_results=5)
+        
+        if 'resources' in resources:
+            result['resource_count'] = len(resources['resources'])
+            result['resource_sample'] = [{
+                'public_id': r.get('public_id'),
+                'type': r.get('type'),
+                'format': r.get('format')
+            } for r in resources['resources'][:3]]
+            result['test_results'][-1]['status'] = 'Success'
+        else:
+            result['resource_count'] = 0
+            result['test_results'][-1]['status'] = 'No resources found'
+        
+        # Try to generate a test URL
+        result['test_results'].append({
+            'test': 'Generate URL',
+            'time': str(datetime.datetime.now()),
+            'status': 'Running...'
+        })
+        
+        if result.get('resource_count', 0) > 0:
+            sample_id = result['resource_sample'][0]['public_id']
+            sample_format = result['resource_sample'][0]['format']
+            
+            # Generate a URL for the test image
+            sample_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/{sample_id}.{sample_format}"
+            result['sample_url'] = sample_url
+            
+            # Test fetching the URL
+            import requests
+            response = requests.head(sample_url)
+            result['url_test'] = {
+                'url': sample_url,
+                'status_code': response.status_code,
+                'content_type': response.headers.get('Content-Type')
+            }
+            result['test_results'][-1]['status'] = f"Success ({response.status_code})"
+        else:
+            result['test_results'][-1]['status'] = 'Skipped - no resources'
+            
+    except Exception as e:
+        import traceback
+        result['error'] = str(e)
+        result['traceback'] = traceback.format_exc()
+        if result['test_results'] and result['test_results'][-1]['status'] == 'Running...':
+            result['test_results'][-1]['status'] = f"Failed: {str(e)}"
+    
+    return JsonResponse(result)

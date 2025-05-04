@@ -151,6 +151,7 @@ urlpatterns = [
     
     # Debugging/testing endpoints
     path('debug-images/', views.debug_image_paths, name='debug_image_paths'),
+    path('debug-cloudinary/', views.debug_cloudinary, name='debug_cloudinary'),
     path('test-image/<str:format>/', views.test_image, name='test_image'),
     
     # Redirect from media paths directly to the proxy
