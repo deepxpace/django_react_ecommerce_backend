@@ -149,7 +149,7 @@ urlpatterns = [
     # Image serving endpoints
     path('media-proxy/<path:path>', views.proxy_s3_media, name='proxy_s3_media'),
     
-    # Debugging/testing endpoints
+    # Debugging/testing endpoints - also make them available directly at root level for easier testing
     path('debug-images/', views.debug_image_paths, name='debug_image_paths'),
     path('debug-cloudinary/', views.debug_cloudinary, name='debug_cloudinary'),
     path('test-image/<str:format>/', views.test_image, name='test_image'),
