@@ -2,6 +2,10 @@ from django.shortcuts import render
 import requests
 from django.http import HttpResponse, Http404, JsonResponse
 from django.conf import settings
+import mimetypes
+
+# Register AVIF MIME type to ensure proper content type detection
+mimetypes.add_type('image/avif', '.avif')
 
 # Create your views here.
 
@@ -33,6 +37,9 @@ def proxy_s3_media(request, path):
         
         # Try with media/ prefix
         f"media/{path}" if not path.startswith('media/') else None,
+        
+        # Remove static/media/ prefix if it exists (to handle frontend requests)
+        path.replace('static/media/', '') if 'static/media/' in path else None,
         
         # Common variations
         path.replace('_', '-') if '_' in path else None,
@@ -138,6 +145,11 @@ def proxy_s3_media(request, path):
                 elif try_path.startswith('products/'):
                     cloudinary_paths.append(try_path[9:])  # Remove 'products/'
                 
+                # Also try without any file extension for raw assets
+                base_path = try_path.rsplit('.', 1)[0] if '.' in try_path else try_path
+                if base_path not in cloudinary_paths:
+                    cloudinary_paths.append(base_path)
+                
                 for cloud_path in cloudinary_paths:
                     try:
                         # Construct Cloudinary URL
@@ -148,7 +160,11 @@ def proxy_s3_media(request, path):
                         cloud_response = requests.get(cloudinary_url, stream=True)
                         if cloud_response.status_code == 200:
                             logger.info(f"Found image at Cloudinary: {cloudinary_url}")
+                            # Detect content type - if it's AVIF, explicitly set it
                             content_type = cloud_response.headers.get('Content-Type', 'application/octet-stream')
+                            if try_path.lower().endswith('.avif'):
+                                content_type = 'image/avif'
+                                
                             django_response = HttpResponse(
                                 cloud_response.content,
                                 content_type=content_type
@@ -158,7 +174,7 @@ def proxy_s3_media(request, path):
                     except Exception as cloud_err:
                         logger.warning(f"Error fetching from Cloudinary: {str(cloud_err)}")
         else:
-            logger.info("Cloudinary not configured, skipping Cloudinary check")
+            logger.info(f"Cloudinary not configured properly. Storage: {cloudinary_storage}, Name: {cloudinary_name}")
     except Exception as e:
         logger.warning(f"Error checking Cloudinary: {str(e)}")
     
@@ -185,8 +201,10 @@ def proxy_s3_media(request, path):
                     content = f.read()
                 
                 # Determine content type
-                import mimetypes
                 content_type, _ = mimetypes.guess_type(local_file_path)
+                # Force AVIF content type if needed
+                if local_file_path.lower().endswith('.avif'):
+                    content_type = 'image/avif'
                 
                 django_response = HttpResponse(
                     content,
@@ -245,6 +263,8 @@ def debug_image_paths(request):
         'media_root': None,
         'media_url': None,
         'cloudinary_name': None,
+        'sample_urls': [],
+        'test_image': None
     }
     
     try:
@@ -255,12 +275,53 @@ def debug_image_paths(request):
         # Set basic information
         result['media_root'] = str(settings.MEDIA_ROOT)
         result['media_url'] = settings.MEDIA_URL
+        result['static_url'] = settings.STATIC_URL
+        result['static_root'] = str(settings.STATIC_ROOT)
+        result['debug_mode'] = settings.DEBUG
+        
+        # Get hostname for URLs
+        host = request.get_host()
+        protocol = 'https' if request.is_secure() else 'http'
+        base_url = f"{protocol}://{host}"
+        result['base_url'] = base_url
+        
+        # Sample URL patterns for frontend reference
+        result['sample_urls'] = [
+            {
+                'type': 'Direct Media URL',
+                'pattern': f"{base_url}/media/filename.jpg",
+                'description': 'Direct access to media files (redirects to Cloudinary)'
+            },
+            {
+                'type': 'Media Proxy URL',
+                'pattern': f"{base_url}/media-proxy/filename.jpg",
+                'description': 'Proxy that tries multiple sources (S3, Cloudinary, local)'
+            },
+            {
+                'type': 'Cloudinary Direct URL',
+                'pattern': f"https://res.cloudinary.com/{result['cloudinary_name']}/image/upload/filename.jpg",
+                'description': 'Direct URL to Cloudinary (faster, but requires CORS setup)'
+            },
+            {
+                'type': 'Cloudinary Transformation URL',
+                'pattern': f"https://res.cloudinary.com/{result['cloudinary_name']}/image/upload/c_fill,h_300,w_300/filename.jpg",
+                'description': 'URL with transformations (resize, crop, etc.)'
+            }
+        ]
         
         # Check for Cloudinary configuration
         cloudinary_storage = getattr(settings, 'DEFAULT_FILE_STORAGE', '')
         cloudinary_name = getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
         result['cloudinary_name'] = cloudinary_name
         result['is_cloudinary_configured'] = 'cloudinary' in cloudinary_storage and bool(cloudinary_name)
+        
+        # Add information on how to serve AVIF images
+        result['mime_types'] = {
+            'avif': mimetypes.guess_type('test.avif')[0],
+            'webp': mimetypes.guess_type('test.webp')[0],
+            'jpg': mimetypes.guess_type('test.jpg')[0],
+            'png': mimetypes.guess_type('test.png')[0]
+        }
         
         # Try to get bucket name
         aws_bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
@@ -328,17 +389,33 @@ def debug_image_paths(request):
                     for resource in cloud_result['resources']:
                         public_id = resource.get('public_id', '')
                         # Build the full Cloudinary URL
-                        cloud_url = resource.get('url', '')
-                        secure_url = resource.get('secure_url', '')
+                        cloud_url = resource.get('secure_url', '')
+                        
+                        # Also get a few transformed URLs for reference
+                        format = resource.get('format', '')
+                        transformed_url = f"https://res.cloudinary.com/{cloudinary_name}/image/upload/c_fill,h_300,w_300/{public_id}.{format}"
+                        auto_url = f"https://res.cloudinary.com/{cloudinary_name}/image/upload/f_auto,q_auto/{public_id}.{format}"
                         
                         result['cloudinary_objects'].append({
                             'public_id': public_id,
                             'resource_type': resource.get('resource_type', ''),
                             'type': resource.get('type', ''),
-                            'format': resource.get('format', ''),
-                            'url': secure_url or cloud_url,
-                            'proxy_url': f"/media-proxy/{public_id}.{resource.get('format', '')}"
+                            'format': format,
+                            'url': cloud_url,
+                            'transformed_url': transformed_url,
+                            'auto_url': auto_url,
+                            'proxy_url': f"/media-proxy/{public_id}.{format}"
                         })
+                        
+                        # Use the first image as a test image
+                        if not result['test_image'] and format in ['jpg', 'jpeg', 'png', 'webp', 'avif']:
+                            result['test_image'] = {
+                                'original': cloud_url,
+                                'transformed': transformed_url,
+                                'auto': auto_url,
+                                'proxy': f"{base_url}/media-proxy/{public_id}.{format}",
+                                'via_frontend': f"{base_url}/media/{public_id}.{format}"
+                            }
             except Exception as e:
                 result['cloudinary_error'] = f"Cloudinary error: {str(e)}"
         else:
@@ -346,18 +423,38 @@ def debug_image_paths(request):
         
         # Also list files from local media directory
         try:
+            media_files = []
             for root, dirs, files in os.walk(settings.MEDIA_ROOT):
                 for file in files:
-                    if file.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
+                    if file.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif')):
                         full_path = os.path.join(root, file)
                         rel_path = os.path.relpath(full_path, settings.MEDIA_ROOT)
-                        result['local_media'].append({
+                        media_files.append({
                             'path': rel_path,
                             'size': os.path.getsize(full_path),
                             'url': f"{settings.MEDIA_URL}{rel_path}"
                         })
+                        
+            # Sort by newest first (using file modification time)
+            sorted_media = sorted(
+                media_files,
+                key=lambda x: os.path.getmtime(os.path.join(settings.MEDIA_ROOT, x['path'])),
+                reverse=True
+            )
+            result['local_media'] = sorted_media[:50]  # Limit to 50 files
         except Exception as e:
             result['local_media_error'] = f"Local media error: {str(e)}"
+        
+        # Add environment info for debugging
+        import platform
+        import sys
+        result['environment'] = {
+            'python': sys.version,
+            'platform': platform.platform(),
+            'django': getattr(settings, 'DJANGO_VERSION', 'Unknown'),
+            'middleware': getattr(settings, 'MIDDLEWARE', []),
+            'installed_apps': getattr(settings, 'INSTALLED_APPS', []),
+        }
         
         # Return the results
         return JsonResponse(result)

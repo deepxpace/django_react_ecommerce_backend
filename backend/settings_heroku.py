@@ -40,37 +40,27 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 WEB_CONCURRENCY = os.environ.get('WEB_CONCURRENCY', 3)
 
 # CORS settings for Heroku
-CORS_ALLOW_ALL_ORIGINS = False  # Set to False for security
+CORS_ALLOW_ALL_ORIGINS = False  # Keep security by not allowing all origins
 
+# Make sure the frontend domains are added to CORS allowed origins
 CORS_ALLOWED_ORIGINS = [
     "https://koshimart.com",
     "https://www.koshimart.com",
     "https://koshimart-frontend.vercel.app",
     "https://koshimart-store.vercel.app",
-    "https://koshimart.vercel.app",  # Add the main Vercel domain
+    "https://koshimart.vercel.app",
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:3000"
 ]
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://koshimart.com",
-    "https://www.koshimart.com",
-    "https://koshimart-frontend.vercel.app",
-    "https://koshimart-store.vercel.app",
-    "https://koshimart.vercel.app"  # Add the main Vercel domain
-]
+# Add Cloudinary to CORS allowed origins
+CORS_ALLOWED_ORIGINS += ["https://res.cloudinary.com"]
 
-# Additional CORS settings for handling media files
-CORS_ALLOW_METHODS = [
-    "DELETE",
-    "GET",
-    "OPTIONS",
-    "PATCH",
-    "POST",
-    "PUT",
-]
+# Enable CORS for all media URLs
+CORS_URLS_REGEX = r'^/media/.*$|^/media-proxy/.*$|^/static/.*$'
 
+# These headers are needed for proper image loading
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
@@ -81,14 +71,20 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    "range",  # Important for video/large file streaming
 ]
 
-# Allow credentials (cookies, authorization headers)
-CORS_ALLOW_CREDENTIALS = True
+# Enable response compression for better performance
+MIDDLEWARE.append('django.middleware.gzip.GZipMiddleware')
 
-# Ensure SSL connection
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = True 
+# Make sure Cloudinary is properly set up for media storage
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# Set DEBUG to False for production
+DEBUG = False
+
+# Add the middleware to the MIDDLEWARE list
+MIDDLEWARE.insert(2, 'api.middleware.CloudinaryMediaRedirectMiddleware')
 
 # Modify logging for Heroku (use stdout instead of file)
 LOGGING = {
