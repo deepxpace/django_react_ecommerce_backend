@@ -1,41 +1,89 @@
 from django.shortcuts import render, redirect
 import requests
-from django.http import HttpResponse, Http404, JsonResponse
+from django.http import HttpResponse, Http404, JsonResponse, HttpResponseRedirect
 from django.conf import settings
 import mimetypes
 import os
 import datetime
 import logging
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 # Register AVIF MIME type to ensure proper content type detection
 mimetypes.add_type('image/avif', '.avif')
 
 # Create your views here.
 
+@api_view(['GET'])
 def api_root(request):
-    """
-    Root view to provide API information or redirect to admin panel.
-    """
-    # If user is authenticated and is staff, redirect to admin
-    if request.user.is_authenticated and request.user.is_staff:
-        return redirect('/admin/')
-    
-    # Otherwise, return API information
-    api_info = {
-        "name": "Koshimart API",
-        "version": "1.0",
-        "description": "Backend API for Koshimart e-commerce platform",
-        "endpoints": {
-            "api": "/api/v1/",
-            "products": "/api/v1/products/",
-            "categories": "/api/v1/category/",
-            "admin": "/admin/",
-            "media_proxy": "/media-proxy/{path}",
+    """API root showing available endpoints"""
+    return Response({
+        'title': 'Koshimart API',
+        'version': 'v1',
+        'description': 'API for Koshimart e-commerce platform',
+        'documentation': {
+            'admin': '/admin/',
+            'swagger': '/swagger/'
         },
-        "documentation": "Contact the administrator for API documentation"
-    }
+        'endpoints': {
+            'users': '/api/v1/user/',
+            'products': '/api/v1/products/',
+            'cart': '/api/v1/cart-view/',
+            'search': '/api/v1/search/',
+            'orders': '/api/v1/customer/orders/:user_id/'
+        }
+    })
+
+@api_view(['GET'])
+def media_proxy(request, path):
+    """
+    Media proxy view to forward requests to Cloudinary
     
-    return JsonResponse(api_info)
+    This is a backup for the middleware redirect in case it fails
+    """
+    logger.info(f"Media proxy request for: {path}")
+    
+    # Get Cloudinary cloud name from settings
+    cloud_name = getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME', 'deepsimage')
+    
+    # Build Cloudinary URL
+    if path.startswith('products/'):
+        cloudinary_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/{path}"
+    else:
+        # If it's not explicitly in the products folder but likely is a product
+        cloudinary_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/products/{path}"
+    
+    logger.info(f"Redirecting to Cloudinary via proxy: {cloudinary_url}")
+    
+    try:
+        # Forward the request to Cloudinary
+        cloudinary_response = requests.get(cloudinary_url, stream=True, timeout=5)
+        
+        if cloudinary_response.status_code == 200:
+            # Set content type from response
+            content_type = cloudinary_response.headers.get('Content-Type', 'application/octet-stream')
+            
+            # Create redirect response
+            return HttpResponseRedirect(cloudinary_url)
+        else:
+            # Try direct file from local media
+            local_path = os.path.join(settings.MEDIA_ROOT, path)
+            if os.path.exists(local_path) and os.path.isfile(local_path):
+                logger.info(f"Serving file from local media (fallback): {local_path}")
+                return HttpResponseRedirect(f"{request.scheme}://{request.get_host()}/media/{path}")
+            
+            # If not found, try with products/ prefix
+            if not path.startswith('products/'):
+                alt_cloudinary_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/products/{path}" 
+                return HttpResponseRedirect(alt_cloudinary_url)
+            
+            # If still not found, return 404
+            logger.warning(f"Media file not found: {path}")
+            return JsonResponse({'error': 'File not found'}, status=404)
+            
+    except Exception as e:
+        logger.error(f"Error in media proxy: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
 
 def proxy_s3_media(request, path):
     """

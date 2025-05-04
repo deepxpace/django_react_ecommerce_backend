@@ -1003,35 +1003,67 @@ class ReviewListAPIView(generics.ListCreateAPIView):
     ]
 
     def get_queryset(self):
-        product_id = self.kwargs["product_id"]
-
-        product = Product.objects.get(id=product_id)
-        reviews = Review.objects.filter(product=product)
-
-        return reviews
+        product_id = self.kwargs.get("product_id")
+        
+        # Handle undefined or invalid product_id
+        if product_id == 'undefined' or not product_id:
+            logger.warning(f"Invalid product_id: {product_id}")
+            return Review.objects.none()
+        
+        try:
+            product = Product.objects.get(id=product_id)
+            reviews = Review.objects.filter(product=product)
+            return reviews
+        except (Product.DoesNotExist, ValueError):
+            logger.warning(f"Product with id {product_id} does not exist")
+            return Review.objects.none()
 
     def create(self, request, *args, **kwargs):
         payload = request.data
 
-        user_id = payload["user_id"]
-        product_id = payload["product_id"]
-        rating = payload["rating"]
-        review = payload["review"]
+        user_id = payload.get("user_id")
+        product_id = payload.get("product_id")
+        rating = payload.get("rating")
+        review = payload.get("review")
+        
+        # Validate required fields
+        if not all([user_id, product_id, rating, review]):
+            return Response(
+                {"message": "Missing required fields", "status": "error"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        user = User.objects.get(id=user_id)
-        product = Product.objects.get(id=product_id)
-
-        Review.objects.create(
-            user=user,
-            product=product,
-            rating=rating,
-            review=review,
-        )
-
-        return Response(
-            {"message": "Review created successfully", "status": "success"},
-            status=status.HTTP_200_OK,
-        )
+        try:
+            user = User.objects.get(id=user_id)
+            product = Product.objects.get(id=product_id)
+            
+            Review.objects.create(
+                user=user,
+                product=product,
+                rating=rating,
+                review=review,
+            )
+            
+            return Response(
+                {"message": "Review created successfully", "status": "success"},
+                status=status.HTTP_200_OK,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"message": "User not found", "status": "error"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Product.DoesNotExist:
+            return Response(
+                {"message": "Product not found", "status": "error"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error creating review: {str(e)}")
+            return Response(
+                {"message": f"Error creating review: {str(e)}", "status": "error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class SearchProductAPIView(generics.ListCreateAPIView):

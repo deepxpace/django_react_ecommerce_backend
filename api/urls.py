@@ -17,6 +17,9 @@ urlpatterns = [
     # Root URL - API information
     path('', views.api_root, name='api_root'),
     
+    # Media proxy for handling images
+    path('media-proxy/<path:path>', views.media_proxy, name='media_proxy'),
+    
     # Version 1 API endpoints
     path('v1/', include([
         # USER ENDPOINTS
@@ -149,9 +152,6 @@ urlpatterns = [
             vendor_views.ProductDeleteAPIView.as_view(),
         ),
     ])),
-    
-    # Image serving endpoints
-    path('media-proxy/<path:path>', views.proxy_s3_media, name='proxy_s3_media'),
     
     # Debugging/testing endpoints - also make them available directly at root level for easier testing
     path('debug-images/', views.debug_image_paths, name='debug_image_paths'),
