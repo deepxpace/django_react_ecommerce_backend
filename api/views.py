@@ -3,6 +3,7 @@ import requests
 from django.http import HttpResponse, Http404, JsonResponse
 from django.conf import settings
 import mimetypes
+import os
 
 # Register AVIF MIME type to ensure proper content type detection
 mimetypes.add_type('image/avif', '.avif')
@@ -130,9 +131,11 @@ def proxy_s3_media(request, path):
     
     # Try Cloudinary as the next option
     try:
-        # Check if Cloudinary is configured
+        # Check if Cloudinary is configured - first try env vars, then settings
         cloudinary_storage = getattr(settings, 'DEFAULT_FILE_STORAGE', '')
-        cloudinary_name = getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        cloudinary_name = os.environ.get('CLOUDINARY_CLOUD_NAME') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        
+        logger.info(f"Checking Cloudinary with name: {cloudinary_name}, storage: {cloudinary_storage}")
         
         if 'cloudinary' in cloudinary_storage and cloudinary_name:
             logger.info(f"Trying Cloudinary with cloud name: {cloudinary_name}")
@@ -264,7 +267,8 @@ def debug_image_paths(request):
         'media_url': None,
         'cloudinary_name': None,
         'sample_urls': [],
-        'test_image': None
+        'test_image': None,
+        'environment_vars': {}
     }
     
     try:
@@ -285,6 +289,20 @@ def debug_image_paths(request):
         base_url = f"{protocol}://{host}"
         result['base_url'] = base_url
         
+        # Check for environment variables (redact secrets)
+        env_vars = {
+            'CLOUDINARY_CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME'),
+            'CLOUDINARY_API_KEY': os.environ.get('CLOUDINARY_API_KEY', '')[:5] + '...' if os.environ.get('CLOUDINARY_API_KEY') else None,
+            'CLOUDINARY_API_SECRET': '***REDACTED***' if os.environ.get('CLOUDINARY_API_SECRET') else None,
+            'DATABASE_URL': 'present' if os.environ.get('DATABASE_URL') else None,
+            'DJANGO_SETTINGS_MODULE': os.environ.get('DJANGO_SETTINGS_MODULE') 
+        }
+        result['environment_vars'] = env_vars
+        
+        # Get Cloudinary name from environment or settings
+        cloudinary_name = os.environ.get('CLOUDINARY_CLOUD_NAME') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        result['cloudinary_name'] = cloudinary_name
+        
         # Sample URL patterns for frontend reference
         result['sample_urls'] = [
             {
@@ -299,20 +317,18 @@ def debug_image_paths(request):
             },
             {
                 'type': 'Cloudinary Direct URL',
-                'pattern': f"https://res.cloudinary.com/{result['cloudinary_name']}/image/upload/filename.jpg",
+                'pattern': f"https://res.cloudinary.com/{cloudinary_name}/image/upload/filename.jpg",
                 'description': 'Direct URL to Cloudinary (faster, but requires CORS setup)'
             },
             {
                 'type': 'Cloudinary Transformation URL',
-                'pattern': f"https://res.cloudinary.com/{result['cloudinary_name']}/image/upload/c_fill,h_300,w_300/filename.jpg",
+                'pattern': f"https://res.cloudinary.com/{cloudinary_name}/image/upload/c_fill,h_300,w_300/filename.jpg",
                 'description': 'URL with transformations (resize, crop, etc.)'
             }
         ]
         
         # Check for Cloudinary configuration
         cloudinary_storage = getattr(settings, 'DEFAULT_FILE_STORAGE', '')
-        cloudinary_name = getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
-        result['cloudinary_name'] = cloudinary_name
         result['is_cloudinary_configured'] = 'cloudinary' in cloudinary_storage and bool(cloudinary_name)
         
         # Add information on how to serve AVIF images
@@ -374,11 +390,15 @@ def debug_image_paths(request):
                 import cloudinary
                 import cloudinary.api
                 
+                # Get API credentials from env vars or settings
+                api_key = os.environ.get('CLOUDINARY_API_KEY') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_KEY')
+                api_secret = os.environ.get('CLOUDINARY_API_SECRET') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_SECRET')
+                
                 # Configure Cloudinary
                 cloudinary.config(
                     cloud_name=cloudinary_name,
-                    api_key=getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_KEY'),
-                    api_secret=getattr(settings, 'CLOUDINARY_STORAGE', {}).get('API_SECRET'),
+                    api_key=api_key,
+                    api_secret=api_secret,
                 )
                 
                 # List Cloudinary resources

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.http import HttpResponseRedirect
 import re
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,13 @@ class CloudinaryMediaRedirectMiddleware:
         self.get_response = get_response
         # Regex to match media URLs (only jpg, png, webp, avif, gif)
         self.media_pattern = re.compile(r'^/media/(.+\.(jpg|jpeg|png|webp|avif|gif))$', re.IGNORECASE)
-        # Get Cloudinary settings
-        self.cloud_name = getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        
+        # First try environment variables, then settings
+        self.cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME') or getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
+        
+        # Log what we're using for debugging
+        logger.info(f"Cloudinary middleware initialized with cloud_name: {self.cloud_name}")
+        
         self.is_cloudinary = 'cloudinary' in getattr(settings, 'DEFAULT_FILE_STORAGE', '') and self.cloud_name
 
     def __call__(self, request):
