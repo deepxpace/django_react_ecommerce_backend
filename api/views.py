@@ -665,22 +665,18 @@ def debug_cloudinary(request):
             api_secret=api_secret
         )
         
-        # Get account info
+        # Check our config
         result['test_results'].append({
-            'test': 'Get account info',
+            'test': 'Check configuration',
             'time': str(datetime.datetime.now()),
             'status': 'Running...'
         })
         
-        account_info = cloudinary.api.account_info()
-        
-        result['account_info'] = {
-            'cloud_name': account_info.get('cloud_name'),
-            'plan': account_info.get('plan'),
-            'usage': {
-                'credits': account_info.get('credits', {}).get('usage'),
-                'limit': account_info.get('credits', {}).get('limit')
-            }
+        config = cloudinary.config()
+        result['config'] = {
+            'cloud_name': config.cloud_name,
+            'api_key': config.api_key[:5] + '...' if config.api_key else None,
+            'secure': config.secure
         }
         
         result['test_results'][-1]['status'] = 'Success'
@@ -732,6 +728,52 @@ def debug_cloudinary(request):
             result['test_results'][-1]['status'] = f"Success ({response.status_code})"
         else:
             result['test_results'][-1]['status'] = 'Skipped - no resources'
+        
+        # Try to upload a tiny test image
+        result['test_results'].append({
+            'test': 'Upload test image',
+            'time': str(datetime.datetime.now()),
+            'status': 'Running...'
+        })
+        
+        # Create a simple 1x1 transparent PNG in memory
+        from django.core.files.base import ContentFile
+        tiny_png = (
+            b'\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52'
+            b'\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4'
+            b'\x89\x00\x00\x00\x0a\x49\x44\x41\x54\x78\x9c\x63\x00\x01\x00\x00'
+            b'\x05\x00\x01\x0d\x0a\x2d\xb4\x00\x00\x00\x00\x49\x45\x4e\x44\xae'
+            b'\x42\x60\x82'
+        )
+        
+        try:
+            test_file = ContentFile(tiny_png)
+            test_file.name = 'test_upload.png'
+            
+            # Create a temporary file for the upload
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.png') as tmp:
+                tmp.write(tiny_png)
+                tmp.flush()
+                
+                # Try the upload
+                upload_result = cloudinary.uploader.upload(
+                    tmp.name,
+                    public_id='test_upload',
+                    overwrite=True,
+                    resource_type='image'
+                )
+                
+                result['upload_result'] = {
+                    'public_id': upload_result.get('public_id'),
+                    'url': upload_result.get('url'),
+                    'secure_url': upload_result.get('secure_url')
+                }
+                
+                result['test_results'][-1]['status'] = 'Success'
+        except Exception as e:
+            result['upload_error'] = str(e)
+            result['test_results'][-1]['status'] = f"Failed: {str(e)}"
             
     except Exception as e:
         import traceback
