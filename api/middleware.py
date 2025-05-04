@@ -1,8 +1,9 @@
 from django.conf import settings
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, HttpResponse, Http404
 import re
 import logging
 import os
+import mimetypes
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +25,61 @@ class CloudinaryMediaRedirectMiddleware:
         logger.info(f"Cloudinary middleware initialized with cloud_name: {self.cloud_name}")
         
         self.is_cloudinary = 'cloudinary' in getattr(settings, 'DEFAULT_FILE_STORAGE', '') and self.cloud_name
+        
+        # Keep track of media root
+        self.media_root = settings.MEDIA_ROOT
 
     def __call__(self, request):
-        # Only try to redirect if Cloudinary is configured
-        if self.is_cloudinary:
-            path = request.path_info
-            match = self.media_pattern.match(path)
+        # Only try to handle if it's a media URL
+        path = request.path_info
+        match = self.media_pattern.match(path)
+        
+        if match:
+            file_path = match.group(1)
+            logger.info(f"Handling media request for {file_path}")
             
-            if match:
-                file_path = match.group(1)
+            # Try Cloudinary redirection if configured
+            if self.is_cloudinary:
                 cloudinary_url = f"https://res.cloudinary.com/{self.cloud_name}/image/upload/{file_path}"
-                logger.info(f"Redirecting {path} directly to Cloudinary: {cloudinary_url}")
-                return HttpResponseRedirect(cloudinary_url)
+                logger.info(f"Redirecting {path} to Cloudinary: {cloudinary_url}")
+                
+                try:
+                    # Check if the file exists on Cloudinary
+                    import requests
+                    head_response = requests.head(cloudinary_url, timeout=2)
+                    
+                    if head_response.status_code == 200:
+                        return HttpResponseRedirect(cloudinary_url)
+                    else:
+                        logger.warning(f"File not found on Cloudinary: {cloudinary_url}")
+                except Exception as e:
+                    logger.warning(f"Error checking Cloudinary: {str(e)}")
+            
+            # If we get here, try serving from local media as fallback
+            try:
+                local_path = os.path.join(self.media_root, file_path)
+                if os.path.exists(local_path) and os.path.isfile(local_path):
+                    logger.info(f"Serving file from local media: {local_path}")
+                    
+                    # Get the content type
+                    content_type, _ = mimetypes.guess_type(local_path)
+                    # Force AVIF content type if needed
+                    if local_path.lower().endswith('.avif'):
+                        content_type = 'image/avif'
+                    
+                    # Serve the file
+                    with open(local_path, 'rb') as f:
+                        response = HttpResponse(f.read(), content_type=content_type or 'application/octet-stream')
+                        response['Content-Disposition'] = f'inline; filename="{os.path.basename(local_path)}"'
+                        response['Cache-Control'] = 'max-age=86400'  # Cache for 1 day
+                        return response
+                else:
+                    logger.warning(f"File not found locally: {local_path}")
+                    # Fall through to media-proxy
+                    return HttpResponseRedirect(f"/media-proxy/{file_path}")
+            except Exception as e:
+                logger.error(f"Error serving local file: {str(e)}")
+                return HttpResponseRedirect(f"/media-proxy/{file_path}")
         
         # Continue with normal request processing
         response = self.get_response(request)
