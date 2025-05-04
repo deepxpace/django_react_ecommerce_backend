@@ -30,6 +30,7 @@ urlpatterns = [
         path("user/password-change/", userauths_views.PasswordChangeView.as_view()),
         path("user/profile/<user_id>/", userauths_views.ProfileView.as_view()),
         # STORE ENDPOINTS
+        path("site-settings/", store_views.SiteSettingsAPIView.as_view(), name="site-settings"),
         path("category/", store_views.CategoryListAPIView.as_view()),
         path("products/", store_views.ProductListAPIView.as_view()),
         path("products/<slug>/", store_views.ProductDetailAPIView.as_view()),

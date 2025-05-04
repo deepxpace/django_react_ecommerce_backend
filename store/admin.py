@@ -16,6 +16,7 @@ from store.models import (
     Notification,
     Coupon,
     Tax,
+    SiteSettings,
 )
 
 # Register your models here.
@@ -87,6 +88,20 @@ class CartOrderAdmin(admin.ModelAdmin):
     search_fields = ["oid"]
 
 
+class SiteSettingsAdmin(admin.ModelAdmin):
+    """
+    Admin interface for SiteSettings model.
+    Prevents adding new instances as this is a singleton model.
+    """
+    def has_add_permission(self, request):
+        # Only allow adding if no instances exist
+        return SiteSettings.objects.count() == 0
+    
+    def has_delete_permission(self, request, obj=None):
+        # Prevent deletion of the settings object
+        return False
+
+
 admin.site.register(Category)
 admin.site.register(Product, ProductAdmin)
 
@@ -100,3 +115,4 @@ admin.site.register(Wishlist)
 admin.site.register(Notification)
 admin.site.register(Coupon)
 admin.site.register(Tax)
+admin.site.register(SiteSettings, SiteSettingsAdmin)

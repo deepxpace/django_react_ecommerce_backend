@@ -27,6 +27,7 @@ from store.models import (
     Notification,
     Coupon,
     Tax,
+    SiteSettings,
 )
 from store.serializers import (
     ProductSerializer,
@@ -162,8 +163,10 @@ class CartAPIView(generics.ListCreateAPIView):
             cart.country = country
             cart.cart_id = cart_id
 
-            service_fee_percentage = 5 / 100
-            cart.service_fee = Decimal(service_fee_percentage) * cart.sub_total
+            # Get service fee percentage from site settings
+            site_settings = SiteSettings.get_settings()
+            service_fee_percentage = Decimal(site_settings.service_fee_percentage) / 100
+            cart.service_fee = service_fee_percentage * cart.sub_total
 
             cart.total = (
                 cart.sub_total + cart.shipping_amount + cart.service_fee + cart.tax_fee
@@ -188,8 +191,10 @@ class CartAPIView(generics.ListCreateAPIView):
             cart.country = country
             cart.cart_id = cart_id
 
-            service_fee_percentage = 5 / 100
-            cart.service_fee = Decimal(service_fee_percentage) * cart.sub_total
+            # Get service fee percentage from site settings
+            site_settings = SiteSettings.get_settings()
+            service_fee_percentage = Decimal(site_settings.service_fee_percentage) / 100
+            cart.service_fee = service_fee_percentage * cart.sub_total
 
             cart.total = (
                 cart.sub_total + cart.shipping_amount + cart.service_fee + cart.tax_fee
@@ -1412,3 +1417,20 @@ class CashOnDeliveryAPIView(generics.CreateAPIView):
         except Exception as e:
             print(f"Admin notification error: {str(e)}")
             print(f"Detailed error: {traceback.format_exc()}")
+
+
+class SiteSettingsAPIView(APIView):
+    """
+    API view to get site settings.
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        """Get site settings."""
+        settings = SiteSettings.get_settings()
+        data = {
+            'service_fee_percentage': float(settings.service_fee_percentage),
+            'currency_symbol': settings.currency_symbol,
+            'currency_code': settings.currency_code,
+        }
+        return Response(data)

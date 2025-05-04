@@ -382,3 +382,40 @@ class Tax(models.Model):
     class Meta:
         verbose_name_plural = "Taxes"
         ordering = ["country"]
+
+
+class SiteSettings(models.Model):
+    """
+    Singleton model to store site-wide settings
+    """
+    service_fee_percentage = models.DecimalField(
+        decimal_places=2, 
+        max_digits=5, 
+        default=0.00,
+        help_text="Service fee percentage applied to orders (e.g., 5.00 = 5%)"
+    )
+    currency_symbol = models.CharField(
+        max_length=10, 
+        default="$",
+        help_text="Currency symbol to display (e.g., $, €, £)"
+    )
+    currency_code = models.CharField(
+        max_length=10, 
+        default="USD",
+        help_text="Currency code (e.g., USD, EUR, GBP)"
+    )
+    
+    class Meta:
+        verbose_name = "Site Settings"
+        verbose_name_plural = "Site Settings"
+    
+    def __str__(self):
+        return "Site Settings"
+    
+    @classmethod
+    def get_settings(cls):
+        """
+        Get the site settings, creating a default instance if none exists
+        """
+        settings, created = cls.objects.get_or_create(pk=1)
+        return settings
